@@ -1,0 +1,19 @@
+.mini-menu {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  padding: 0 2.5%;
+  background: #172033;
+  color: #fff;
+  box-shadow: 0 2px 14px rgba(23, 32, 51, 0.18);
+}
+
+.mini-menu__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}

@@ -1,0 +1,60 @@
+services:
+  db:
+    image: mysql:9.3
+    restart: always
+    env_file:
+      - ./tabot.env
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER:-root} -p$${MYSQL_PASSWORD:-$${MYSQL_ROOT_PASSWORD}}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  backend:
+    container_name: maat-mini-backend
+    restart: unless-stopped
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./tabot.env
+    environment:
+      FLASK_APP: app.py
+      DB_HOST: db
+      DB_PORT: 3306
+      TABOT_DIR: /tabot-files
+      CORS_ORIGINS: "http://localhost:${FRONTEND_PORT:-3000}"
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    volumes:
+      - ./backend:/app
+      - ./tabot-files:/tabot-files
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    container_name: maat-mini-frontend
+    restart: unless-stopped
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    environment:
+      BROWSER: "none"
+      VITE_API_URL: "/api"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
