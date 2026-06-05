@@ -1,6 +1,5 @@
-import React from 'react'
 import { Link } from 'react-router-dom'
-import { FaHome } from 'react-icons/fa'
+import maatMiniLogo from '../../images/MAAT-Mini.png'
 import '../../styling/MenuComponent.scss'
 
 interface MenuComponentProps {
@@ -14,11 +13,12 @@ interface MenuComponentProps {
 
 export default function MenuComponent(_props: MenuComponentProps) {
   return (
-    <header className="mini-menu">
-      <Link className="mini-menu__brand" to="/admin/schools">
-        <FaHome />
-        <span>MAAT-Mini</span>
-      </Link>
-    </header>
+    <nav className="menu menu--top menu--inverted menu--borderless menu--huge">
+      <div className="menu__container">
+        <Link className="menu__item menu__item--header" to="/admin/schools">
+          <img src={maatMiniLogo} alt="MAAT-Mini" className="menu__logo" />
+        </Link>
+      </div>
+    </nav>
   )
 }

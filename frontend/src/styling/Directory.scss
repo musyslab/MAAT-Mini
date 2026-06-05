@@ -1,47 +1,111 @@
+/* DirectoryBreadcrumbs.scss */
+
+/* make width math predictable everywhere in this page */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  background: #f5f5f5;
+}
+
+.directory+.main-grid {
+  margin-top: 15px;
+  padding-top: 0;
+}
+
+.directory+.main-grid .admin-project-config-container .pageTitle {
+  margin-top: 0;
+}
+
 .directory {
   width: 95%;
-  margin: 1rem auto 0;
-  color: #64748b;
-  font-size: 0.95rem;
+  box-sizing: border-box;
+
+  /* center the directory container */
+  margin: 120px auto 0;
+
+  padding: 10px 12px;
+
+  /* border around the whole directory system */
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .directory__list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  align-items: center;
-  padding: 0;
   margin: 0;
+  padding: 0;
+
   list-style: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .directory__item {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 6px;
+}
+
+.directory__link,
+.directory__current {
+  display: inline-flex;
+  align-items: center;
+
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 0.2px;
+
+  padding: 6px 8px;
+  border-radius: 8px;
+  text-decoration: none;
 }
 
 .directory__link {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: #315a94;
+  color: inherit;
   cursor: pointer;
-  text-decoration: none;
-  font-weight: 700;
-}
 
-.directory__link:hover,
-.directory__link:focus-visible {
-  text-decoration: underline;
-  outline: none;
+  &:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  &:active {
+    background: rgba(0, 0, 0, 0.10);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #111;
+    outline-offset: 2px;
+  }
 }
 
 .directory__current {
-  color: #475569;
   font-weight: 700;
 }
 
 .directory__sep {
-  color: #94a3b8;
+  font-size: 14px;
+  opacity: 0.65;
+  user-select: none;
+}
+
+.pageTitle {
+  width: 95%;
+  margin: 15px auto 0;
+  align-self: stretch;
+  display: block;
+  padding: 15px 32px;
+  background: #d1d5db;
+  border: 1px solid #9ca3af;
+  border-radius: 16px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.8rem;
+  line-height: 1.15;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }

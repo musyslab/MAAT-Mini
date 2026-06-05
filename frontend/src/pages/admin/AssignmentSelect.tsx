@@ -39,13 +39,13 @@ export default function AssignmentSelect() {
     <div className="page-container mini-shell">
       <Helmet><title>MAAT-Mini</title></Helmet>
       <MenuComponent showUpload={false} showAdminUpload={false} showHelp={false} showCreate={false} showLast={false} showReviewButton={false} />
-      <DirectoryBreadcrumbs items={[{ label: 'Assignment Selection' }]} />
+      <DirectoryBreadcrumbs
+        items={[{ label: 'Assignments' }]}
+        trailingSeparator={true}
+      />
       <div className="pageTitle">MAAT-Mini: Select Assignment</div>
 
       <main className="mini-page">
-        <p className="mini-muted">
-          Assignments are scanned from <code>tabot-files/incorrect-programs/</code>. Each folder should contain a <code>correct solution</code> folder and an <code>incorrect solutions</code> folder.
-        </p>
 
         {loading && <div className="mini-card">Loading assignments...</div>}
         {error && <div className="mini-alert">{error}</div>}
@@ -60,7 +60,7 @@ export default function AssignmentSelect() {
             <Link
               key={assignment.id}
               className="mini-card mini-card--link"
-              to={`/admin/school/1/class/1/module/1/project/${assignment.id}/submissions`}
+              to={`/mini/assignments/${assignment.id}/submissions`}
             >
               <div className="mini-card__eyebrow">Assignment {assignment.id}</div>
               <h2>{assignment.name}</h2>

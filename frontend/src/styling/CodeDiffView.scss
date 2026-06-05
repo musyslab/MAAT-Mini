@@ -747,8 +747,10 @@
             }
 
             .sbs-pane-scroll {
-                overflow-x: auto;
+                overflow-x: scroll;
                 overflow-y: hidden;
+                min-width: 0;
+                scrollbar-gutter: stable;
             }
 
             .sbs-pane-content {
@@ -760,9 +762,11 @@
             .diff-side-by-side-bar {
                 --side-by-side-bar-inner-width: 100%;
                 width: 100%;
-                overflow-x: auto;
+                overflow-x: scroll;
                 overflow-y: hidden;
                 margin-top: 0.35rem;
+                height: 16px;
+                scrollbar-gutter: stable;
             }
 
             .diff-side-by-side-bar-inner {
@@ -926,4 +930,63 @@
         flex-direction: column;
         align-items: stretch;
     }
+}
+
+
+/* ===== Side-by-side scrollbar on launch fix ===== */
+.diff-view .diff-pane .diff-code.side-by-side-mode .diff-content.side-by-side {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.diff-view .diff-pane .diff-code.side-by-side-mode .diff-side-by-side-shell {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 0 auto;
+}
+
+.diff-view .diff-pane .diff-code.side-by-side-mode .sbs-pane-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    scrollbar-gutter: stable;
+}
+
+.diff-view .diff-pane .diff-code.side-by-side-mode .sbs-pane-content {
+    display: inline-block;
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+    background: #ffffff;
+}
+
+.diff-view .diff-pane .diff-code.side-by-side-mode .diff-line.sbs-cell {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+}
+
+.diff-view .diff-pane .diff-code.side-by-side-mode .diff-side-by-side-bar {
+    display: block;
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 100%;
+    height: 18px;
+    min-height: 18px;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    scrollbar-gutter: stable;
+}
+
+.diff-view .diff-pane .diff-code.side-by-side-mode .diff-side-by-side-bar-inner {
+    display: block;
+    height: 1px;
+    width: var(--side-by-side-bar-inner-width, calc(100% + 1px));
+    min-width: calc(100% + 1px);
 }

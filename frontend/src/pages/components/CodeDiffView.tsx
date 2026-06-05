@@ -1,5 +1,5 @@
 // frontend/src/pages/components/CodeDiffView.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { diffChars } from 'diff'
 import '../../styling/CodeDiffView.scss'
@@ -101,6 +101,7 @@ type SideBySideRow = {
 }
 
 const MAX_CHANGE_RATIO_FOR_INTRA = 0.7
+const SHARED_SIDE_SCROLLBAR_EPSILON_PX = 1
 
 function diffModeStateLabel(mode: DiffMode) {
     return mode === 'short' ? 'Short' : 'Long'
@@ -284,6 +285,8 @@ export default function DiffView(props: DiffViewProps) {
     const sideBySideLeftRef = useRef<HTMLDivElement | null>(null)
     const sideBySideRightRef = useRef<HTMLDivElement | null>(null)
     const sideBySideBarRef = useRef<HTMLDivElement | null>(null)
+    const sideBySideLeftContentRef = useRef<HTMLDivElement | null>(null)
+    const sideBySideRightContentRef = useRef<HTMLDivElement | null>(null)
     const syncingSideScrollRef = useRef(false)
 
     const copyBlockHandlers = disableCopy
@@ -370,6 +373,29 @@ export default function DiffView(props: DiffViewProps) {
         })
     }
 
+    const getSideBySideContentWidth = (
+        pane: HTMLDivElement | null,
+        content: HTMLDivElement | null
+    ) => {
+        if (!pane) return 0
+
+        const cellWidths = content
+            ? Array.from(content.querySelectorAll<HTMLElement>('.sbs-cell')).map((el) =>
+                Math.max(el.scrollWidth, el.offsetWidth, el.getBoundingClientRect().width)
+            )
+            : []
+
+        return Math.max(
+            pane.scrollWidth,
+            pane.offsetWidth,
+            pane.getBoundingClientRect().width,
+            content?.scrollWidth ?? 0,
+            content?.offsetWidth ?? 0,
+            content?.getBoundingClientRect().width ?? 0,
+            ...cellWidths
+        )
+    }
+
     const updateSharedSideScrollMetrics = () => {
         const left = sideBySideLeftRef.current
         const right = sideBySideRightRef.current
@@ -377,12 +403,32 @@ export default function DiffView(props: DiffViewProps) {
 
         if (!left || !right || !bar) return
 
-        const maxPaneScrollWidth = Math.max(left.scrollWidth, right.scrollWidth)
-        const paneClientWidth = Math.max(left.clientWidth, right.clientWidth)
+        const maxPaneScrollWidth = Math.max(
+            getSideBySideContentWidth(left, sideBySideLeftContentRef.current),
+            getSideBySideContentWidth(right, sideBySideRightContentRef.current)
+        )
+
+        const paneClientWidth = Math.min(
+            left.clientWidth || Number.POSITIVE_INFINITY,
+            right.clientWidth || Number.POSITIVE_INFINITY
+        )
         const barClientWidth = bar.clientWidth
-        const nextWidth = Math.max(barClientWidth, maxPaneScrollWidth - paneClientWidth + barClientWidth)
+
+        if (!Number.isFinite(paneClientWidth) || paneClientWidth <= 0 || barClientWidth <= 0) return
+
+        const scrollableDistance = Math.max(0, maxPaneScrollWidth - paneClientWidth)
+        const nextWidth = Math.max(
+            barClientWidth + SHARED_SIDE_SCROLLBAR_EPSILON_PX,
+            barClientWidth + scrollableDistance
+        )
 
         bar.style.setProperty('--side-by-side-bar-inner-width', `${nextWidth}px`)
+
+        const inner = bar.firstElementChild as HTMLDivElement | null
+        if (inner) inner.style.width = `${nextWidth}px`
+
+        const maxBarScrollLeft = Math.max(0, nextWidth - barClientWidth)
+        if (bar.scrollLeft > maxBarScrollLeft) bar.scrollLeft = maxBarScrollLeft
     }
 
     useEffect(() => {
@@ -791,21 +837,73 @@ export default function DiffView(props: DiffViewProps) {
         return rows
     }, [selectedDiffText, intraEnabled])
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (diffLayout !== 'side-by-side') return
+        if (sideBySideRows.length === 0) return
 
-        const frame = requestAnimationFrame(() => {
+        let cancelled = false
+        let frame1 = 0
+        let frame2 = 0
+        const timeouts: number[] = []
+
+        const refreshMetrics = () => {
+            if (cancelled) return
             updateSharedSideScrollMetrics()
+        }
+
+        refreshMetrics()
+
+        frame1 = requestAnimationFrame(() => {
+            refreshMetrics()
+
+            frame2 = requestAnimationFrame(() => {
+                refreshMetrics()
+            })
         })
 
-        const handleResize = () => updateSharedSideScrollMetrics()
-        window.addEventListener('resize', handleResize)
+        // The side-by-side layout can finish sizing after async data, fonts, and parent panels settle.
+        // Rechecking a few times prevents the shared bar from staying at its initial no-overflow width.
+        ;[0, 50, 150, 500].forEach((delay) => {
+            timeouts.push(window.setTimeout(refreshMetrics, delay))
+        })
+
+        const resizeObserver =
+            typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refreshMetrics) : null
+
+        ;[
+            sideBySideLeftRef.current,
+            sideBySideRightRef.current,
+            sideBySideBarRef.current,
+            sideBySideLeftContentRef.current,
+            sideBySideRightContentRef.current,
+            sideBySideBarRef.current?.parentElement ?? null,
+            sideBySideLeftRef.current?.closest('.diff-code') ?? null,
+            sideBySideLeftRef.current?.closest('.diff-pane') ?? null,
+        ].forEach((el) => {
+            if (el && resizeObserver) resizeObserver.observe(el)
+        })
+
+        const mutationObserver =
+            typeof MutationObserver !== 'undefined' ? new MutationObserver(refreshMetrics) : null
+
+        ;[sideBySideLeftContentRef.current, sideBySideRightContentRef.current].forEach((el) => {
+            if (el && mutationObserver) {
+                mutationObserver.observe(el, { childList: true, subtree: true, characterData: true })
+            }
+        })
+
+        window.addEventListener('resize', refreshMetrics)
 
         return () => {
-            cancelAnimationFrame(frame)
-            window.removeEventListener('resize', handleResize)
+            cancelled = true
+            cancelAnimationFrame(frame1)
+            cancelAnimationFrame(frame2)
+            timeouts.forEach((timeout) => window.clearTimeout(timeout))
+            resizeObserver?.disconnect()
+            mutationObserver?.disconnect()
+            window.removeEventListener('resize', refreshMetrics)
         }
-    }, [diffLayout, sideBySideRows])
+    }, [diffLayout, selectedDiffId, selectedDiffText, intraEnabled, sideBySideRows.length])
 
     const selectedCode = useMemo(() => {
         if (codeFiles.length === 0) return null
@@ -940,7 +1038,7 @@ export default function DiffView(props: DiffViewProps) {
                             ref={sideBySideLeftRef}
                             onScroll={() => syncSideBySideScroll('left')}
                         >
-                            <div className="sbs-pane-content">
+                            <div className="sbs-pane-content" ref={sideBySideLeftContentRef}>
                                 {sideBySideRows.map((row) => (
                                     <div key={`left-${row.key}`} className={`diff-line sbs-cell ${row.leftKind}`}>
                                         {renderSideBySideCell(row.leftText, row.leftKind, row.leftSegs)}
@@ -956,7 +1054,7 @@ export default function DiffView(props: DiffViewProps) {
                             ref={sideBySideRightRef}
                             onScroll={() => syncSideBySideScroll('right')}
                         >
-                            <div className="sbs-pane-content">
+                            <div className="sbs-pane-content" ref={sideBySideRightContentRef}>
                                 {sideBySideRows.map((row) => (
                                     <div key={`right-${row.key}`} className={`diff-line sbs-cell ${row.rightKind}`}>
                                         {renderSideBySideCell(row.rightText, row.rightKind, row.rightSegs)}

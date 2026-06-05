@@ -44,52 +44,24 @@ type StudentSubmissionNavRow = {
 }
 
 export function AdminGrading() {
-    const { id, school_id, class_id, module_id, project_id, checkpoint_id: route_checkpoint_id } = useParams<{
+    const { id, project_id } = useParams<{
         id: string
-        school_id: string
-        class_id: string
-        module_id: string
         project_id: string
-        checkpoint_id?: string
     }>()
 
     const submissionId = id !== undefined ? parseInt(id, 10) : defaultpagenumber
-    const sid = school_id !== undefined ? parseInt(school_id, 10) : -1
-    const cid = class_id !== undefined ? parseInt(class_id, 10) : -1
-    const mid = module_id !== undefined ? parseInt(module_id, 10) : -1
+    const MINI_CLASS_ID = 1
+    const cid = MINI_CLASS_ID
     const pid = project_id !== undefined ? parseInt(project_id, 10) : -1
     const navigate = useNavigate()
     const location = useLocation()
 
-    const schoolIdStr = school_id ?? ''
-    const classIdStr = class_id ?? ''
-    const moduleIdStr = module_id ?? ''
     const projectIdStr = project_id ?? ''
+    const isCheckpoint = false
+    const checkpointId = undefined
 
-    const params = new URLSearchParams(location.search)
-    const fromParam = (params.get('from') || '').toLowerCase()
-    const fromAnalytics = fromParam === 'analytics' || fromParam === 'analytics-dashboard'
-    const truthyValues = ['1', 'true', 'yes', 'y', 'on']
-    const checkpointParam = (params.get('checkpoint') || params.get('practice') || '').toLowerCase()
-    const isCheckpoint = !!route_checkpoint_id || truthyValues.includes(checkpointParam)
-    const checkpointIdParam = (
-        route_checkpoint_id ||
-        params.get('checkpoint_id') ||
-        params.get('practice_problem_id') ||
-        ''
-    ).trim()
-    const parsedCheckpointId = parseInt(checkpointIdParam, 10)
-    const checkpointId =
-        isCheckpoint && !Number.isNaN(parsedCheckpointId) && parsedCheckpointId > 0 ? parsedCheckpointId : undefined
-
-    const classSelectionUrl = `/admin/school/${schoolIdStr}/classes`
-    const adminMenuUrl = `/admin/school/${schoolIdStr}/class/${classIdStr}/menu`
-    const analyticsDashboardUrl = `/admin/school/${schoolIdStr}/class/${classIdStr}/analytics`
-    const moduleListUrl = `/admin/school/${schoolIdStr}/class/${classIdStr}/modules`
-    const moduleDetailsUrl = `/admin/school/${schoolIdStr}/class/${classIdStr}/module/${moduleIdStr}/overview`
-    const studentListUrl = isCheckpoint && checkpointId
-        ? `/admin/school/${schoolIdStr}/class/${classIdStr}/module/${moduleIdStr}/project/${projectIdStr}/checkpoint/${checkpointId}/submissions`
-        : `/admin/school/${schoolIdStr}/class/${classIdStr}/module/${moduleIdStr}/project/${projectIdStr}/submissions`
+    const assignmentListUrl = '/mini/assignments'
+    const studentListUrl = `/mini/assignments/${projectIdStr}/submissions`
 
     const [studentName, setStudentName] = useState<string>('')
     const [studentRoster, setStudentRoster] = useState<StudentSubmissionNavRow[]>([])
@@ -906,24 +878,14 @@ export function AdminGrading() {
         <div className="page-container" id="admin-output-diff">
             <LoadingAnimation show={showLoadingOverlay} message={isInitialPageLoading ? 'Loading grading page...' : 'Saving grade...'} />
             <Helmet>
-                <title>MAAT</title>
+                <title>MAAT-Mini</title>
             </Helmet>
             <MenuComponent showUpload={false} showAdminUpload={false} showHelp={false} showCreate={false} showLast={false} showReviewButton={false} />
 
             <DirectoryBreadcrumbs
                 items={[
-                    { label: 'School Selection', to: '/admin/schools' },
-                    { label: 'Class Selection', to: classSelectionUrl },
-                    { label: 'Admin Menu', to: adminMenuUrl },
-                    ...(fromAnalytics
-                        ? [
-                            { label: 'Analytics Dashboard', to: analyticsDashboardUrl },
-                        ]
-                        : [
-                            { label: 'Module List', to: moduleListUrl },
-                            { label: 'Module Details', to: moduleDetailsUrl },
-                            { label: 'Student List', to: studentListUrl },
-                        ]),
+                    { label: 'Assignments', to: assignmentListUrl },
+                    { label: 'Submissions', to: studentListUrl },
                     { label: 'Grade Submission' },
                 ]}
                 confirmOnNavigate={isDirty}

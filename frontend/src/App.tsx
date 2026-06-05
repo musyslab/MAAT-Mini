@@ -21,14 +21,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/admin/schools" replace />} />
-        <Route path="/admin/schools" element={<ProtectedRoute><AssignmentSelect /></ProtectedRoute>} />
-        <Route path="/admin/school/:school_id/classes" element={<ProtectedRoute><AssignmentSelect /></ProtectedRoute>} />
-        <Route path="/admin/school/:school_id/class/:class_id/menu" element={<ProtectedRoute><AssignmentSelect /></ProtectedRoute>} />
-        <Route path="/admin/school/:school_id/class/:class_id/modules" element={<ProtectedRoute><AssignmentSelect /></ProtectedRoute>} />
-        <Route path="/admin/school/:school_id/class/:class_id/module/:module_id/overview" element={<ProtectedRoute><AssignmentSelect /></ProtectedRoute>} />
-        <Route path="/admin/school/:school_id/class/:class_id/module/:module_id/project/:project_id/submissions" element={<ProtectedRoute><AdminStudentList /></ProtectedRoute>} />
-        <Route path="/admin/school/:school_id/class/:class_id/module/:module_id/project/:project_id/grade/:id" element={<ProtectedRoute><AdminGrading /></ProtectedRoute>} />
+        <Route path="/" element={<Navigate to="/mini/assignments" replace />} />
+        <Route path="/mini" element={<Navigate to="/mini/assignments" replace />} />
+        <Route path="/mini/assignments" element={<ProtectedRoute><AssignmentSelect /></ProtectedRoute>} />
+        <Route path="/mini/assignments/:project_id/submissions" element={<ProtectedRoute><AdminStudentList /></ProtectedRoute>} />
+        <Route path="/mini/assignments/:project_id/submissions/:id/grade" element={<ProtectedRoute><AdminGrading /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

@@ -29,7 +29,7 @@ type Assignment = {
 }
 
 export default function AdminStudentList() {
-  const { school_id = '1', class_id = '1', module_id = '1', project_id = '' } = useParams()
+  const { project_id = '' } = useParams<{ project_id: string }>()
   const [assignment, setAssignment] = useState<Assignment | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,7 +66,7 @@ export default function AdminStudentList() {
     })
   }, [submissions])
 
-  const baseUrl = `/admin/school/${school_id}/class/${class_id}/module/${module_id}/project/${project_id}`
+  const submissionsUrl = `/mini/assignments/${project_id}/submissions`
 
   return (
     <div className="page-container mini-shell">
@@ -74,8 +74,8 @@ export default function AdminStudentList() {
       <MenuComponent showUpload={false} showAdminUpload={false} showHelp={false} showCreate={false} showLast={false} showReviewButton={false} />
       <DirectoryBreadcrumbs
         items={[
-          { label: 'Assignment Selection', to: '/admin/schools' },
-          { label: assignment?.name || 'Submissions' },
+          { label: 'Assignments', to: '/mini/assignments' },
+          { label: 'Submissions' },
         ]}
       />
       <div className="pageTitle">Submissions: {assignment?.name || `Assignment ${project_id}`}</div>
@@ -111,7 +111,7 @@ export default function AdminStudentList() {
                     </td>
                     <td>{submission.codeFileCount}</td>
                     <td>
-                      <Link className="mini-button" to={`${baseUrl}/grade/${submission.submissionId}`}>Grade</Link>
+                      <Link className="mini-button" to={`${submissionsUrl}/${submission.submissionId}/grade`}>Grade</Link>
                     </td>
                   </tr>
                 ))}
