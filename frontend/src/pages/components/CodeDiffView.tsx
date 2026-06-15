@@ -1077,8 +1077,7 @@ export default function DiffView(props: DiffViewProps) {
         )
     }
 
-    const DiffViewSection = () => {
-        return (
+    const renderDiffViewSection = () => (
             <section
                 className={`diff-view ${disableCopy ? 'no-user-select' : ''}`}
                 {...copyBlockHandlers}
@@ -1260,11 +1259,9 @@ export default function DiffView(props: DiffViewProps) {
                     </div>
                 </div>
             </section>
-        )
-    }
+    )
 
-    const CodeSection = () => {
-        return (
+    const renderCodeSection = () => (
             <Highlight theme={themes.vsLight} code={codeText} language={language as any}>
                 {({ style, tokens, getLineProps, getTokenProps }) => (
                     <div
@@ -1311,15 +1308,14 @@ export default function DiffView(props: DiffViewProps) {
                     </div>
                 )}
             </Highlight>
-        )
-    }
+    )
 
     return (
         <>
             {rightPanel ? (
                 <div className="diff-code-panel">
                     <div className="diff-and-code">
-                        <DiffViewSection />
+                        {renderDiffViewSection()}
 
                         {betweenDiffAndCode}
 
@@ -1353,7 +1349,7 @@ export default function DiffView(props: DiffViewProps) {
                                         </div>
                                     )}
 
-                                    <CodeSection />
+                                    {renderCodeSection()}
                                 </>
                             )}
                         </section>
@@ -1364,7 +1360,7 @@ export default function DiffView(props: DiffViewProps) {
                 </div>
             ) : (
                 <>
-                    <DiffViewSection />
+                    {renderDiffViewSection()}
 
                     {betweenDiffAndCode}
 
@@ -1398,7 +1394,7 @@ export default function DiffView(props: DiffViewProps) {
                                     </div>
                                 )}
 
-                                <CodeSection />
+                                {renderCodeSection()}
                             </>
                         )}
                     </section>
