@@ -4,7 +4,7 @@ __pycache__/
 tabot.env
 
 # Student/correct program payloads
-tabot-files/incorrect-programs
+tabot-files/
 frontend/.env
 frontend/package-lock.json
 frontend/node_modules

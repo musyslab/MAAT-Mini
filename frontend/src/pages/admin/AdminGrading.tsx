@@ -81,92 +81,39 @@ export function AdminGrading() {
     // - flatPerError: points deducted once if error exists on a selected range (count does not affect grading)
     const [scoringMode, setScoringMode] = useState<ScoringMode>('perInstance')
 
-    const BASE_ERROR_DEFS = useMemo<ErrorOption[]>(
-        () => [
-            {
-                id: 'MISSPELL',
-                label: 'Spelling or word substitution error',
-                description:
-                    'A word or short phrase is wrong compared to expected output (including valid English words used incorrectly, missing/extra letters, or wrong small words) when the rest of the line is otherwise correct.',
-                points: 10,
-            },
-            {
-                id: 'FORMAT',
-                label: 'Formatting mismatch',
-                description: 'Correct content but incorrect formatting (spacing/newlines/case/spelling/precision).',
-                points: 5,
-            },
-            {
-                id: 'CONTENT',
-                label: 'Missing or extra required content',
-                description: 'Required value/line is missing, or additional unexpected value/line is produced.',
-                points: 20,
-            },
-            {
-                id: 'ORDER',
-                label: 'Order mismatch',
-                description: 'Reads inputs or prints outputs in the wrong order relative to the required sequence.',
-                points: 15,
-            },
-            {
-                id: 'INIT_STATE',
-                label: 'Incorrect initialization',
-                description: 'Uses uninitialized values or starts with the wrong initial state.',
-                points: 20,
-            },
-            {
-                id: 'STATE_MISUSE',
-                label: 'Incorrect variable or state use',
-                description: 'Wrong variable used, wrong type behavior (truncation), overwritten state, or flag not managed correctly.',
-                points: 15,
-            },
-            {
-                id: 'COMPUTE',
-                label: 'Incorrect computation',
-                description: 'Wrong formula, precedence, numeric operation, or derived value.',
-                points: 20,
-            },
-            {
-                id: 'CONDITION',
-                label: 'Incorrect condition logic',
-                description: 'Incorrect comparison, boundary, compound logic, or missing edge case handling.',
-                points: 15,
-            },
-            {
-                id: 'BRANCHING',
-                label: 'Incorrect branching structure',
-                description:
-                    'Wrong if/elif/else structure (misbound else), missing default case, or missing break in selection-like logic.',
-                points: 15,
-            },
-            {
-                id: 'LOOP',
-                label: 'Incorrect loop logic',
-                description: 'Wrong bounds/termination, update/control error, off-by-one, wrong nesting, or accumulation error.',
-                points: 20,
-            },
-            {
-                id: 'INDEXING',
-                label: 'Incorrect indexing or collection setup',
-                description: 'Out-of-bounds, wrong base/range, or incorrect array/string/list setup (size or contents).',
-                points: 20,
-            },
-            {
-                id: 'FUNCTIONS',
-                label: 'Incorrect function behavior or use',
-                description: 'Wrong return behavior (missing/ignored/wrong type) or incorrect function use (scope/order/unnecessary re-calls).',
-                points: 15,
-            },
-            {
-                id: 'COMPILE',
-                label: 'Program did not compile',
-                description:
-                    'Code fails to compile or run due to syntax errors, missing imports/includes, or build/runtime errors that prevent execution.',
-                points: 40,
-            },
-        ],
-        [],
-    )
+    const [baseErrorDefs, setBaseErrorDefs] = useState<ErrorOption[]>([])
+    const [errorDefsLoading, setErrorDefsLoading] = useState<boolean>(true)
+    const [errorDefsError, setErrorDefsError] = useState<string | null>(null)
+
+    useEffect(() => {
+        setErrorDefsLoading(true)
+        setErrorDefsError(null)
+
+        axios
+            .get(`${import.meta.env.VITE_API_URL}/ai/grading-error-defs`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('AUTOTA_AUTH_TOKEN')}` },
+            })
+            .then((response) => {
+                const defsRaw = Array.isArray(response.data?.errorDefs) ? response.data.errorDefs : []
+                const defs: ErrorOption[] = defsRaw
+                    .map((item: any) => ({
+                        id: String(item?.id ?? '').trim(),
+                        label: String(item?.label ?? item?.id ?? '').trim(),
+                        description: String(item?.description ?? '').trim(),
+                        points: Number.isFinite(Number(item?.points)) ? Math.max(0, Math.floor(Number(item.points))) : 0,
+                    }))
+                    .filter((item: ErrorOption) => item.id && item.label)
+
+                setBaseErrorDefs(defs)
+                if (defs.length === 0) setErrorDefsError('No grading categories were returned by the backend.')
+            })
+            .catch((err) => {
+                console.error('Could not load grading categories:', err)
+                setBaseErrorDefs([])
+                setErrorDefsError('Could not load grading categories.')
+            })
+            .finally(() => setErrorDefsLoading(false))
+    }, [])
 
     // Custom (user-created) error defs for this grading session/page (persisted with grading config)
     const [customErrorDefs, setCustomErrorDefs] = useState<ErrorOption[]>([])
@@ -193,7 +140,7 @@ export function AdminGrading() {
         setSaveStatus('idle')
     }
 
-    const ALL_ERROR_DEFS = useMemo<ErrorOption[]>(() => [...BASE_ERROR_DEFS, ...customErrorDefs], [BASE_ERROR_DEFS, customErrorDefs])
+    const ALL_ERROR_DEFS = useMemo<ErrorOption[]>(() => [...baseErrorDefs, ...customErrorDefs], [baseErrorDefs, customErrorDefs])
 
     // Store ONLY overrides (modified points). Defaults come from ALL_ERROR_DEFS.
     const [errorPoints, setErrorPoints] = useState<Record<string, number>>({})
@@ -326,23 +273,25 @@ export function AdminGrading() {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
 
+    const truncateForAi = (text: string, limit: number): string => {
+        const normalized = (text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+        if (normalized.length <= limit) return normalized
+        return `${normalized.slice(0, limit)}\n...[truncated]...`
+    }
+
     const getSelectedCodeFromDom = (range: LineRange): string => {
         const lines: string[] = []
         for (let ln = range.start; ln <= range.end; ln++) {
             const el = lineRefs.current[ln]
             if (!el) continue
-            const raw = (el.textContent ?? '').replace(/\u00A0/g, ' ').trimEnd()
-            const stripped = raw.replace(/^\s*\d+\s+/, '')
-            lines.push(stripped)
+            const codeText = el.querySelector('.code-text')?.textContent ?? ''
+            const cleaned = codeText.replace(/\u00A0/g, ' ').trimEnd()
+            lines.push(`${ln}: ${cleaned}`)
         }
         return lines.join('\n').trim()
     }
 
     const requestAiSuggestions = async (range: LineRange) => {
-        const key = `${submissionId}:${range.start}-${range.end}`
-        if (lastAiKeyRef.current === key) return
-        lastAiKeyRef.current = key
-
         const selectedCode = getSelectedCodeFromDom(range)
         if (!selectedCode) {
             setAiSuggestionIds([])
@@ -350,6 +299,10 @@ export function AdminGrading() {
             setAiSuggestError(null)
             return
         }
+
+        const key = `${submissionId}:${range.start}-${range.end}:${selectedCode.length}:${activeTestcaseName}:${activeTestcaseLongDiff.length}:${ERROR_DEFS.length}`
+        if (lastAiKeyRef.current === key) return
+        lastAiKeyRef.current = key
 
         if (aiAbortRef.current) aiAbortRef.current.abort()
         const ctrl = new AbortController()
@@ -366,9 +319,9 @@ export function AdminGrading() {
                     submissionId: submissionId,
                     startLine: range.start,
                     endLine: range.end,
-                    selectedCode: selectedCode,
+                    selectedCode: truncateForAi(selectedCode, 1500),
                     testcaseName: activeTestcaseName,
-                    testcaseLongDiff: activeTestcaseLongDiff,
+                    testcaseLongDiff: truncateForAi(activeTestcaseLongDiff, 2500),
                 },
                 {
                     headers: {
@@ -378,7 +331,9 @@ export function AdminGrading() {
                 },
             )
 
-            const ids = Array.isArray(res.data?.suggestions) ? res.data.suggestions : []
+            const ids = Array.isArray(res.data?.suggestions)
+                ? res.data.suggestions.map((id: any) => String(id)).filter((id: string) => ERROR_MAP[id])
+                : []
             setAiSuggestionIds(ids)
             setAiSuggestStatus('idle')
         } catch (e: any) {
@@ -514,7 +469,7 @@ export function AdminGrading() {
         }
         requestAiSuggestions(selectedRange)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedRange, initialLine])
+    }, [selectedRange, initialLine, activeTestcaseName, activeTestcaseLongDiff, ERROR_MAP])
 
     // Ctrl+F style find (commits on Enter)
     const [findInput, setFindInput] = useState<string>('')
@@ -701,7 +656,7 @@ export function AdminGrading() {
 
     // Handles saving grading errors
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-    const isInitialPageLoading = studentHeaderLoading || savedGradingLoading
+    const isInitialPageLoading = studentHeaderLoading || savedGradingLoading || errorDefsLoading
     const showLoadingOverlay = isInitialPageLoading || saveStatus === 'saving'
 
     // Unsaved changes tracking (dirty state)
@@ -1344,6 +1299,7 @@ export function AdminGrading() {
                                                             <div className="suggestion-top">
                                                                 <span className="suggestion-title">{label}</span>
                                                             </div>
+                                                            {desc && <div className="suggestion-description">{desc}</div>}
 
                                                             <div className="suggestion-bottom">
                                                                 <div className="instance-box" aria-label="Instances">
@@ -1413,6 +1369,7 @@ export function AdminGrading() {
                         </div>
 
                         <div className="grading-section">
+                            {errorDefsError && <div className="muted small">{errorDefsError}</div>}
                             <details className="all-errors-picker" defaultChecked={false as any}>
                                 <summary className="all-errors-picker-header">
                                     <span className="all-errors-picker-title">All errors</span>
@@ -1429,6 +1386,7 @@ export function AdminGrading() {
                                                     <div className="suggestion-top">
                                                         <span className="suggestion-title">{err.label}</span>
                                                     </div>
+                                                    {err.description && <div className="suggestion-description">{err.description}</div>}
 
                                                     <div className="suggestion-bottom">
                                                         <div className="instance-box" aria-label="Instances">
@@ -1547,6 +1505,7 @@ export function AdminGrading() {
                                                     <span className="suggestion-title">{label}</span>
                                                     <span className="muted small">{rangeLabel}</span>
                                                 </div>
+                                                {desc && <div className="suggestion-description">{desc}</div>}
 
                                                 <div className="suggestion-bottom">
                                                     <div className="instance-box" aria-label="Instances">

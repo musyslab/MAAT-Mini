@@ -779,6 +779,16 @@
 .suggestion-title {
     font-weight: 900;
     color: #111827;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+}
+
+.suggestion-description {
+    margin-top: 4px;
+    color: #4b5563;
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1.25;
 }
 
 .suggestion-bottom {
@@ -972,7 +982,7 @@
 .all-errors-table-header {
     display: grid;
     grid-template-columns:
-        minmax(140px, 3fr) minmax(140px, 1fr) minmax(100px, 6fr) minmax(120px, max-content);
+        minmax(220px, 3fr) minmax(140px, 1fr) minmax(100px, 6fr) minmax(120px, max-content);
 
     gap: 8px;
     align-items: center;
@@ -980,7 +990,7 @@
     border: 1px solid #f1f5f9;
     border-radius: 10px;
     background: #f8fafc;
-    min-width: 700px;
+    min-width: 780px;
 
     .col {
         font-weight: 900;
@@ -1006,18 +1016,20 @@
 .all-errors-item {
     display: grid;
     grid-template-columns:
-        minmax(140px, 3fr) minmax(140px, 1fr) minmax(100px, 6fr) minmax(120px, max-content);
+        minmax(220px, 3fr) minmax(140px, 1fr) minmax(100px, 6fr) minmax(120px, max-content);
     gap: 8px;
     align-items: center;
     border: 1px solid #f1f5f9;
     border-radius: 10px;
     padding: 8px 8px;
     background: #ffffff;
-    min-width: 700px;
+    min-width: 780px;
 
     .all-errors-item-label {
         font-weight: 800;
         color: #111827;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
     }
 
     .all-errors-item-points {
