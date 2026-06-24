@@ -1,10 +1,19 @@
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 .page-container {
     min-height: 100%;
+    width: 100%;
 }
 
 /* ======== Top view switch (tabs) ======== */
 .tab-menu {
-    width: 95%;
+    width: 95vw;
+    max-width: 95vw;
+    box-sizing: border-box;
     margin: 30px auto 0.5rem;
     /* push below fixed menu */
     display: flex;
@@ -45,7 +54,9 @@
 
 /* Keep code section readable */
 .code-section {
-    width: 95%;
+    width: 95vw;
+    max-width: 95vw;
+    box-sizing: border-box;
     margin: 2rem auto 3rem;
 
     .section-title {
@@ -53,6 +64,8 @@
     }
 
     .code-block {
+        width: 100%;
+        box-sizing: border-box;
         background: #ffffff;
         /* Submitted Code background should be white */
         color: #1f2937;
@@ -190,6 +203,8 @@
     }
 
     .code-file-picker {
+        width: 100%;
+        box-sizing: border-box;
         display: flex;
         align-items: center;
         gap: 0.75rem;
@@ -215,6 +230,7 @@
 
         .select-wrap {
             position: relative;
+            box-sizing: border-box;
             display: inline-block;
         }
 
@@ -240,9 +256,11 @@
     /* default when used without tab container */
     margin-bottom: 1rem;
 
-    /* Center the table and constrain width */
+    /* Center the table on the same 95vw page rail */
     .results-table {
-        width: 95%;
+        width: 95vw;
+        max-width: 95vw;
+        box-sizing: border-box;
         margin: 1.25rem auto;
         border-collapse: collapse;
         border-spacing: 0;
@@ -339,7 +357,9 @@
 
     /* Optional: Section title width aligned with table */
     .section-title {
-        width: 95%;
+        width: 95vw;
+        max-width: 95vw;
+        box-sizing: border-box;
         margin: 0 auto 0.6rem;
         color: #222e3a;
     }
@@ -354,13 +374,17 @@
 
 /* ===================== Diff File View ===================== */
 .diff-view {
-    width: 95%;
+    width: 95vw;
+    max-width: 95vw;
+    box-sizing: border-box;
     margin: 1rem auto 2rem;
     display: grid;
     grid-template-columns: 16% 1fr;
     gap: 1rem;
 
     .diff-sidebar {
+        width: 100%;
+        box-sizing: border-box;
         background: #fff;
         border: 1px solid #e7eaf1;
         border-radius: 8px;
@@ -438,6 +462,9 @@
     }
 
     .diff-pane {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
         background: #fff;
         border: 1px solid #e7eaf1;
         border-radius: 8px;
@@ -448,6 +475,8 @@
         min-height: 300px;
 
         .diff-toolbar {
+            width: 100%;
+            box-sizing: border-box;
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -695,6 +724,8 @@
         }
 
         .diff-code {
+            width: 100%;
+            box-sizing: border-box;
             font-size: 0.93rem;
             line-height: 1.35;
             padding: 0.6rem 0.75rem;
@@ -926,9 +957,29 @@
 }
 
 @media (max-width: 900px) {
+    .tab-menu {
+        overflow-x: auto;
+        justify-content: flex-start;
+    }
+
+    .diff-view {
+        grid-template-columns: 1fr;
+    }
+
+    .diff-view .diff-sidebar,
+    .diff-view .diff-pane {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .diff-view .diff-sidebar {
+        min-height: auto;
+    }
+
     .diff-toolbar-mode-group {
         flex-direction: column;
         align-items: stretch;
+        width: 100%;
     }
 }
 
@@ -936,12 +987,14 @@
 /* ===== Side-by-side scrollbar on launch fix ===== */
 .diff-view .diff-pane .diff-code.side-by-side-mode .diff-content.side-by-side {
     width: 100%;
+    box-sizing: border-box;
     min-width: 0;
     max-width: 100%;
 }
 
 .diff-view .diff-pane .diff-code.side-by-side-mode .diff-side-by-side-shell {
     width: 100%;
+    box-sizing: border-box;
     min-width: 0;
     max-width: 100%;
     flex: 0 0 auto;
@@ -949,6 +1002,7 @@
 
 .diff-view .diff-pane .diff-code.side-by-side-mode .sbs-pane-scroll {
     width: 100%;
+    box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
     overflow-x: scroll;

@@ -6,7 +6,7 @@ export default function NotFound() {
     <main className="mini-page">
       <h1>Page not found</h1>
       <p>The requested MAAT-Mini page does not exist.</p>
-      <Link to="/admin/schools">Return to assignments</Link>
+      <Link to="/mini/prolific">Return to the study start</Link>
     </main>
   )
 }

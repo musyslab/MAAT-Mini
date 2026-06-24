@@ -16,12 +16,13 @@ body {
   padding-top: 0;
 }
 
-.directory+.main-grid .admin-project-config-container .pageTitle {
+.directory+.main-grid .project-config-container .pageTitle {
   margin-top: 0;
 }
 
 .directory {
-  width: 95%;
+  width: 95vw;
+  max-width: 95vw;
   box-sizing: border-box;
 
   /* center the directory container */
@@ -36,6 +37,8 @@ body {
 }
 
 .directory__list {
+  width: 100%;
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
 
@@ -95,7 +98,8 @@ body {
 }
 
 .pageTitle {
-  width: 95%;
+  width: 95vw;
+  max-width: 95vw;
   margin: 15px auto 0;
   align-self: stretch;
   display: block;

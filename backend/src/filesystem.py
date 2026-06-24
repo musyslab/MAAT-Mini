@@ -10,8 +10,12 @@ from pathlib import Path
 from typing import Any
 
 SOURCE_EXTS = {".py", ".java"}
+INSTRUCTION_EXTS = {".pdf", ".docx", ".doc"}
+TEXT_EXTS = {".txt", ".md", ".rst", ".csv", ".json", ".yaml", ".yml"}
 ASSIGNMENT_PREFIX_RE = re.compile(r"^\s*(\d+)\s*-")
 SUBMISSION_TIME_RE = re.compile(r"^(?P<user>.+?)_(?P<time>.+)$")
+SUBMISSION_ID_FACTOR = 1_000_000
+AI_SUBMISSION_ID_OFFSET = 500_000
 
 
 @dataclass(frozen=True)
@@ -22,7 +26,10 @@ class AssignmentInfo:
     folder: Path
     correct_solution_dir: Path
     incorrect_solutions_dir: Path
+    ai_generated_dir: Path | None
     instruction_files: list[Path]
+    solution_files: list[Path]
+    text_files: list[Path]
 
 
 @dataclass(frozen=True)
@@ -32,6 +39,8 @@ class SubmissionInfo:
     ordinal: int
     folder_name: str
     folder: Path
+    source: str
+    source_label: str
     user_key: str
     first_name: str
     last_name: str
@@ -70,9 +79,42 @@ def _language_from_name(name: str, correct_dir: Path) -> str:
     return "unknown"
 
 
-def root_from_env() -> Path:
+def _language_from_suffix(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".py":
+        return "python"
+    if suffix == ".java":
+        return "java"
+    return "text"
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return path.read_text(encoding="latin-1", errors="replace")
+    except Exception as exc:
+        return f"Could not read {path.name}: {exc}"
+
+
+def _relative_name(path: Path, base: Path) -> str:
+    try:
+        return path.relative_to(base).as_posix()
+    except ValueError:
+        return path.name
+
+
+def tabot_dir_from_env() -> Path:
     tabot_dir = Path(os.environ.get("TABOT_DIR", "/tabot-files"))
-    return tabot_dir / "incorrect-programs"
+    return tabot_dir
+
+
+def root_from_env() -> Path:
+    return tabot_dir_from_env() / "incorrect-programs"
+
+
+def ai_generated_root_from_env() -> Path:
+    return tabot_dir_from_env() / "ai-generated"
 
 
 def scan_assignments(root: Path | None = None) -> list[AssignmentInfo]:
@@ -80,16 +122,28 @@ def scan_assignments(root: Path | None = None) -> list[AssignmentInfo]:
     if not root.exists():
         return []
 
+    ai_root = ai_generated_root_from_env()
+
     assignments: list[AssignmentInfo] = []
     for ordinal, folder in enumerate(sorted([p for p in root.iterdir() if p.is_dir()], key=lambda p: p.name.lower()), start=1):
         correct_dir = folder / "correct solution"
         incorrect_dir = folder / "incorrect solutions"
+        ai_generated_dir = ai_root / folder.name
         if not correct_dir.exists() and not incorrect_dir.exists():
             continue
-        instruction_files = [
-            p for p in correct_dir.iterdir()
-            if p.is_file() and p.suffix.lower() in {".pdf", ".docx", ".doc"}
-        ] if correct_dir.exists() else []
+
+        correct_files = sorted(
+            [p for p in correct_dir.rglob("*") if p.is_file()],
+            key=lambda p: _relative_name(p, correct_dir).lower(),
+        ) if correct_dir.exists() else []
+
+        instruction_files = [p for p in correct_files if p.suffix.lower() in INSTRUCTION_EXTS]
+        solution_files = [p for p in correct_files if p.suffix.lower() in SOURCE_EXTS]
+        text_files = [
+            p for p in correct_files
+            if p.suffix.lower() in TEXT_EXTS and p.suffix.lower() not in SOURCE_EXTS and p.suffix.lower() not in INSTRUCTION_EXTS
+        ]
+
         assignment = AssignmentInfo(
             id=_assignment_id(folder.name, ordinal),
             name=folder.name,
@@ -97,7 +151,10 @@ def scan_assignments(root: Path | None = None) -> list[AssignmentInfo]:
             folder=folder,
             correct_solution_dir=correct_dir,
             incorrect_solutions_dir=incorrect_dir,
+            ai_generated_dir=ai_generated_dir if ai_generated_dir.exists() and ai_generated_dir.is_dir() else None,
             instruction_files=instruction_files,
+            solution_files=solution_files,
+            text_files=text_files,
         )
         assignments.append(assignment)
     return assignments
@@ -146,47 +203,101 @@ def _read_pass_fail(testcase_results_path: Path | None, testcase_json_path: Path
     return False
 
 
+def _source_files_in_submission(folder: Path) -> list[Path]:
+    return sorted(
+        [p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in SOURCE_EXTS],
+        key=lambda p: str(p.relative_to(folder)).lower(),
+    )
+
+
 def scan_submissions(project_id: int) -> list[SubmissionInfo]:
     assignment = get_assignment(project_id)
-    if not assignment or not assignment.incorrect_solutions_dir.exists():
+    if not assignment:
         return []
 
     rows: list[SubmissionInfo] = []
-    submission_dirs = sorted([p for p in assignment.incorrect_solutions_dir.iterdir() if p.is_dir()], key=lambda p: p.name.lower())
-    for ordinal, folder in enumerate(submission_dirs, start=1):
-        testcase_json = folder / "testcases.json"
-        testcase_results = folder / "TestCaseResults.txt"
-        code_files = sorted(
-            [p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in SOURCE_EXTS],
-            key=lambda p: str(p.relative_to(folder)).lower(),
-        )
-        user_key, first_name, last_name, submitted_at = _display_name_from_folder(folder.name)
-        rows.append(
-            SubmissionInfo(
-                id=(project_id * 1_000_000) + ordinal,
-                project_id=project_id,
-                ordinal=ordinal,
-                folder_name=folder.name,
-                folder=folder,
-                user_key=user_key,
-                first_name=first_name,
-                last_name=last_name,
-                submitted_at=submitted_at,
-                is_passing=_read_pass_fail(testcase_results if testcase_results.exists() else None, testcase_json if testcase_json.exists() else None),
-                testcase_json_path=testcase_json if testcase_json.exists() else None,
-                testcase_results_path=testcase_results if testcase_results.exists() else None,
-                code_files=code_files,
+
+    if assignment.incorrect_solutions_dir.exists():
+        submission_dirs = sorted([p for p in assignment.incorrect_solutions_dir.iterdir() if p.is_dir()], key=lambda p: p.name.lower())
+        for ordinal, folder in enumerate(submission_dirs, start=1):
+            testcase_json = folder / "testcases.json"
+            testcase_results = folder / "TestCaseResults.txt"
+            code_files = _source_files_in_submission(folder)
+            user_key, first_name, last_name, submitted_at = _display_name_from_folder(folder.name)
+            rows.append(
+                SubmissionInfo(
+                    id=(project_id * SUBMISSION_ID_FACTOR) + ordinal,
+                    project_id=project_id,
+                    ordinal=ordinal,
+                    folder_name=folder.name,
+                    folder=folder,
+                    source="student",
+                    source_label="Student Submission",
+                    user_key=user_key,
+                    first_name=first_name,
+                    last_name=last_name,
+                    submitted_at=submitted_at,
+                    is_passing=_read_pass_fail(testcase_results if testcase_results.exists() else None, testcase_json if testcase_json.exists() else None),
+                    testcase_json_path=testcase_json if testcase_json.exists() else None,
+                    testcase_results_path=testcase_results if testcase_results.exists() else None,
+                    code_files=code_files,
+                )
             )
-        )
+
+    if assignment.ai_generated_dir and assignment.ai_generated_dir.exists():
+        ai_ordinal = 1
+        student_dirs = sorted([p for p in assignment.ai_generated_dir.iterdir() if p.is_dir()], key=lambda p: p.name.lower())
+        for student_dir in student_dirs:
+            output_dirs = sorted([p for p in student_dir.iterdir() if p.is_dir()], key=lambda p: p.name.lower())
+            for folder in output_dirs:
+                testcase_json = folder / "testcases.json"
+                testcase_results = folder / "TestCaseResults.txt"
+                code_files = _source_files_in_submission(folder)
+                if not code_files and not testcase_json.exists() and not testcase_results.exists():
+                    continue
+
+                user_key, first_name, last_name, _submitted_at = _display_name_from_folder(student_dir.name)
+                folder_name = f"{student_dir.name}/{folder.name}"
+                ordinal = AI_SUBMISSION_ID_OFFSET + ai_ordinal
+                rows.append(
+                    SubmissionInfo(
+                        id=(project_id * SUBMISSION_ID_FACTOR) + ordinal,
+                        project_id=project_id,
+                        ordinal=ordinal,
+                        folder_name=folder_name,
+                        folder=folder,
+                        source="ai",
+                        source_label="AI Output",
+                        user_key=user_key,
+                        first_name=first_name,
+                        last_name=last_name,
+                        submitted_at=folder.name,
+                        is_passing=_read_pass_fail(testcase_results if testcase_results.exists() else None, testcase_json if testcase_json.exists() else None),
+                        testcase_json_path=testcase_json if testcase_json.exists() else None,
+                        testcase_results_path=testcase_results if testcase_results.exists() else None,
+                        code_files=code_files,
+                    )
+                )
+                ai_ordinal += 1
     return rows
 
 
 def get_submission(submission_id: int) -> SubmissionInfo | None:
-    project_id = submission_id // 1_000_000
+    project_id = submission_id // SUBMISSION_ID_FACTOR
     for submission in scan_submissions(project_id):
         if submission.id == submission_id:
             return submission
     return None
+
+
+def _material_file_dict(path: Path, base: Path, kind: str) -> dict[str, Any]:
+    return {
+        "name": _relative_name(path, base),
+        "kind": kind,
+        "extension": path.suffix.lower(),
+        "sizeBytes": path.stat().st_size if path.exists() else 0,
+        "path": str(path),
+    }
 
 
 def assignment_to_dict(assignment: AssignmentInfo) -> dict[str, Any]:
@@ -195,33 +306,86 @@ def assignment_to_dict(assignment: AssignmentInfo) -> dict[str, Any]:
         "id": assignment.id,
         "name": assignment.name,
         "language": assignment.language,
-        "path": str(assignment.folder),
+        "path": "",
         "submissionCount": len(submissions),
-        "incorrectSolutionsPath": str(assignment.incorrect_solutions_dir),
-        "correctSolutionPath": str(assignment.correct_solution_dir),
-        "instructionFiles": [p.name for p in assignment.instruction_files],
+        "studentSubmissionCount": len([s for s in submissions if s.source == "student"]),
+        "aiOutputCount": len([s for s in submissions if s.source == "ai"]),
+        "incorrectSolutionsPath": "",
+        "aiGeneratedPath": "",
+        "correctSolutionPath": "",
+        "instructionFiles": [f"Instruction PDF {idx + 1}" for idx, _p in enumerate(assignment.instruction_files)],
+        "solutionFiles": [f"Reference file {idx + 1}" for idx, _p in enumerate(assignment.solution_files)],
+        "textFiles": [f"Text material {idx + 1}" for idx, _p in enumerate(assignment.text_files)],
+    }
+
+def assignment_materials_payload(assignment: AssignmentInfo) -> dict[str, Any]:
+    pdf_files = [p for p in assignment.instruction_files if p.suffix.lower() == ".pdf"]
+
+    return {
+        "assignment": assignment_to_dict(assignment),
+        "pdfFiles": [
+            _material_file_dict(p, assignment.correct_solution_dir, "instruction")
+            for p in pdf_files
+        ],
+        "solutionFiles": [
+            {
+                **_material_file_dict(p, assignment.correct_solution_dir, "solution"),
+                "language": _language_from_suffix(p),
+                "content": _read_text(p),
+            }
+            for p in assignment.solution_files
+        ],
+        "textFiles": [
+            {
+                **_material_file_dict(p, assignment.correct_solution_dir, "text"),
+                "content": _read_text(p),
+            }
+            for p in assignment.text_files
+        ],
     }
 
 
+def find_assignment_material_file(assignment: AssignmentInfo, kind: str, name: str) -> Path | None:
+    target = (name or "").replace("\\", "/").strip("/")
+    if not target:
+        return None
+
+    if kind == "instruction":
+        candidates = [p for p in assignment.instruction_files if p.suffix.lower() == ".pdf"]
+    elif kind == "solution":
+        candidates = assignment.solution_files
+    elif kind == "text":
+        candidates = assignment.text_files
+    else:
+        return None
+
+    for path in candidates:
+        rel = _relative_name(path, assignment.correct_solution_dir)
+        if rel == target:
+            return path
+    return None
+
+
 def submission_to_dict(submission: SubmissionInfo) -> dict[str, Any]:
-    full_name = f"{submission.first_name} {submission.last_name}".strip() or submission.user_key
+    display = f"Program {submission.ordinal if submission.source == 'student' else submission.ordinal - AI_SUBMISSION_ID_OFFSET}"
     return {
         "submissionId": submission.id,
         "projectId": submission.project_id,
         "userId": submission.ordinal,
-        "userKey": submission.user_key,
-        "firstName": submission.first_name,
-        "lastName": submission.last_name,
-        "fullName": full_name,
-        "folderName": submission.folder_name,
-        "submittedAt": submission.submitted_at,
+        "userKey": display,
+        "firstName": "",
+        "lastName": "",
+        "fullName": display,
+        "folderName": "",
+        "source": submission.source,
+        "sourceLabel": "Program",
+        "submittedAt": "",
         "isPassing": submission.is_passing,
         "codeFileCount": len(submission.code_files),
         "hasTestcasesJson": bool(submission.testcase_json_path),
         "hasTestCaseResults": bool(submission.testcase_results_path),
-        "path": str(submission.folder),
+        "path": "",
     }
-
 
 def testcase_payload(submission: SubmissionInfo) -> dict[str, Any]:
     if submission.testcase_json_path and submission.testcase_json_path.exists():
@@ -265,12 +429,16 @@ def testcase_payload(submission: SubmissionInfo) -> dict[str, Any]:
 
 def code_payload(submission: SubmissionInfo) -> dict[str, Any]:
     files = []
-    for path in submission.code_files:
+    for idx, path in enumerate(submission.code_files, start=1):
         try:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             content = path.read_text(encoding="latin-1", errors="replace")
         except Exception as exc:
-            content = f"/* Could not read {path.name}: {exc} */"
-        files.append({"name": str(path.relative_to(submission.folder)), "content": content})
+            content = f"/* Could not read program file: {exc} */"
+
+        suffix = path.suffix.lower()
+        if suffix not in SOURCE_EXTS:
+            suffix = ""
+        files.append({"name": f"Program file {idx}{suffix}", "content": content})
     return {"files": files}

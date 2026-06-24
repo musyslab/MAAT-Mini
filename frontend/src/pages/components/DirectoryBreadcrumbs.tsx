@@ -1,6 +1,6 @@
 import React from "react"
 import { Link } from "react-router-dom"
-import "../../styling/Directory.scss"
+import "../../styling/DirectoryBreadcrumbs.scss"
 
 export type DirectoryCrumb = {
     label: string

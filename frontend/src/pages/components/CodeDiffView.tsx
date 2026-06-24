@@ -231,7 +231,7 @@ type DiffViewProps = {
     isPractice?: boolean
     practiceProblemId?: number | null
 
-    // Optional: enable grading-like behaviors (AdminGrading uses these)
+    // Optional: enable grading-like behaviors (ProlificGradingTask uses these)
     codeSectionTitle?: string
     diffViewRef?: React.RefObject<HTMLElement | null>
     codeContainerRef?: React.RefObject<HTMLDivElement | null>
@@ -247,10 +247,10 @@ type DiffViewProps = {
     onActiveTestcaseChange?: (tc: { name: string; num: number; passed: boolean; longDiff: string; shortDiff: string }) => void
 
     // If true: prevent selection/copying in the diff (student view).
-    // If false/undefined: allow selecting/copying (admin views).
+    // If false/undefined: allow selecting/copying (staff/grading views).
     disableCopy?: boolean
 
-    // If true: show the "Output hidden" banner, but still reveal the diff/output below (admin views).
+    // If true: show the "Output hidden" banner, but still reveal the diff/output below (staff/grading views).
     // If false/undefined: keep hidden outputs hidden (student view).
     revealHiddenOutput?: boolean
 

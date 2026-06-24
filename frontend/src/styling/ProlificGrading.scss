@@ -1,16 +1,26 @@
-/* AdminGrading.scss */
+/* ProlificGrading.scss */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
 
 .diff-code-panel {
+    width: 95vw;
+    max-width: 95vw;
+    box-sizing: border-box;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(340px, 30%);
     gap: 1rem;
     align-items: start;
-    width: 95%;
     margin: 1rem auto 1.5rem;
 }
 
 .diff-and-code {
+    width: 100%;
     min-width: 0;
+    box-sizing: border-box;
 }
 
 /* Make error-markable lines obvious */
@@ -55,6 +65,7 @@
 /* Banner explaining interaction */
 .grading-banner {
     width: 100%;
+    box-sizing: border-box;
     margin: 0.25rem auto;
     border: 1px solid #e7eaf1;
     border-radius: 10px;
@@ -76,20 +87,26 @@
 }
 
 /* Tighten vertical spacing on the grading page */
-#admin-output-diff {
+#prolific-output-diff {
     .diff-view {
         width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
         margin: 0 0 0.75rem 0;
     }
 
     .code-section {
         width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
         margin: 1rem 0 0 0;
     }
 }
 
 .grading-student-nav {
-    width: 95%;
+    width: 95vw;
+    max-width: 95vw;
+    box-sizing: border-box;
     margin: 0.75rem auto 0;
     padding: 10px 12px;
     border: 1px solid #e7eaf1;
@@ -239,6 +256,8 @@
 }
 
 .grading-student-nav__summary {
+    width: 100%;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -391,6 +410,17 @@
 }
 
 @media (max-width: 1100px) {
+    .diff-code-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .grading-panel {
+        position: static;
+        min-width: 0;
+        height: auto;
+        max-height: none;
+    }
+
     .grading-student-nav {
         align-items: stretch;
     }
@@ -423,6 +453,8 @@
 
 /* Right grading panel */
 .grading-panel {
+    width: 100%;
+    box-sizing: border-box;
     position: sticky;
     top: 102px;
     align-self: start;
@@ -436,6 +468,8 @@
     padding: 12px;
 
     .find-bar {
+        width: 100%;
+        box-sizing: border-box;
         display: grid;
         grid-template-columns: 1fr auto auto;
         gap: 8px;
@@ -520,6 +554,8 @@
 }
 
 .grading-section {
+    width: 100%;
+    box-sizing: border-box;
     margin-top: 12px;
 
     .section-label {
@@ -672,6 +708,7 @@
 
 .all-observed-section {
     width: 100%;
+    box-sizing: border-box;
     margin: 1rem 0 2rem;
 }
 
@@ -680,6 +717,8 @@
 }
 
 .all-observed-panel {
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid #e7eaf1;
     border-radius: 12px;
     background: #ffffff;
@@ -719,6 +758,8 @@
 }
 
 .ai-suggestions-picker {
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid #e6eaf0;
     border-radius: 12px;
     background: #ffffff;
@@ -746,12 +787,16 @@
 
 /* AI suggestions */
 .suggestions-grid {
+    width: 100%;
+    box-sizing: border-box;
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
 }
 
 .suggestion-card {
+    width: 100%;
+    box-sizing: border-box;
     text-align: left;
     border: 1px solid #d6dbe3;
     background: #ffffff;
@@ -800,6 +845,8 @@
 }
 
 .all-errors-picker {
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid #e6eaf0;
     border-radius: 12px;
     background: #ffffff;
@@ -843,6 +890,8 @@
 }
 
 .error-options-list {
+    width: 100%;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -850,6 +899,8 @@
 
 /* Selected line errors list */
 .line-error-list {
+    width: 100%;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -857,6 +908,8 @@
 
 /* Navigation List */
 .navigation-section {
+    width: 100%;
+    box-sizing: border-box;
     padding: 8px 8px;
     background: #f8fafc;
     border: 1px solid #e5e7eb;
@@ -904,12 +957,16 @@
 
 /* All errors grouped by line */
 .all-errors {
+    width: 100%;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 
 .all-errors-line {
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid #e6eaf0;
     border-radius: 12px;
     overflow: hidden;
@@ -969,6 +1026,8 @@
 }
 
 .all-errors-line-body {
+    width: 100%;
+    box-sizing: border-box;
     padding: 10px 10px;
     display: flex;
     flex-direction: column;
@@ -1059,6 +1118,8 @@
 
 /* Custom error builder at bottom of All errors */
 .custom-error-builder {
+    width: 100%;
+    box-sizing: border-box;
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid #eef2f6;
@@ -1114,9 +1175,10 @@
 }
 
 .save-panel {
+    width: 100%;
+    box-sizing: border-box;
     position: sticky;
     top: 90px;
-    width: auto;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
@@ -1241,4 +1303,105 @@
         cursor: not-allowed;
         opacity: 0.8;
     }
+}
+/* Prolific grading refinements */
+
+.prolific-grading-panel {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rubric-option-list {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.rubric-option {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.8rem;
+  align-items: flex-start;
+  padding: 0.85rem;
+  border: 1px solid #d8e2ef;
+  border-radius: 16px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.rubric-option:hover,
+.rubric-option.is-selected {
+  border-color: #2c7be5;
+  box-shadow: 0 10px 24px rgba(44, 123, 229, 0.10);
+}
+
+.rubric-option input {
+  margin-top: 0.2rem;
+}
+
+.rubric-option__body {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.rubric-option__title {
+  color: #0f172a;
+  font-weight: 850;
+}
+
+.rubric-option__description {
+  color: #64748b;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.rubric-option__points {
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 850;
+}
+
+.rubric-comment {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.prolific-grade-card {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.prolific-summary-panel .all-errors-line-header {
+  width: 100%;
+}
+
+.no-ai-note {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e2e8f0;
+}
+
+.error-note {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
+  resize: vertical;
 }
