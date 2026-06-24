@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Helmet } from 'react-helmet'
 import { Highlight, Prism, themes } from 'prism-react-renderer'
 import { FaChevronDown } from 'react-icons/fa'
@@ -72,7 +72,7 @@ type ProlificSession = {
 }
 
 function ProgressBar({ currentStep }: { currentStep: number }) {
-    const steps = ['Prolific ID', 'Materials', 'Grading', 'Survey']
+    const steps = ['Prolific ID', 'Materials', 'Rubric', 'Line-level', 'AI-assisted', 'Survey']
     const pct = Math.max(0, Math.min(100, ((currentStep - 1) / (steps.length - 1)) * 100))
 
     return (
@@ -85,11 +85,14 @@ function ProgressBar({ currentStep }: { currentStep: number }) {
                 <div className="prolific-progress__fill" style={{ width: `${pct}%` }} />
             </div>
             <ol className="prolific-progress__steps">
-                {steps.map((step, idx) => (
-                    <li key={step} className={idx + 1 <= currentStep ? 'is-complete' : ''}>
-                        {step}
-                    </li>
-                ))}
+                {steps.map((step, idx) => {
+                    const stepNo = idx + 1
+                    return (
+                        <li key={step} className={[stepNo < currentStep ? 'is-complete' : '', stepNo === currentStep ? 'is-current' : ''].filter(Boolean).join(' ')}>
+                            {step}
+                        </li>
+                    )
+                })}
             </ol>
         </section>
     )
@@ -152,6 +155,9 @@ function CodePreview({ file }: { file: SolutionFile }) {
 export default function ProlificMaterials() {
     const { session_token = '' } = useParams<{ session_token: string }>()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const returnTaskId = Number.parseInt(searchParams.get('returnTask') ?? '', 10)
+    const hasReturnTask = Number.isFinite(returnTaskId)
     const [session, setSession] = useState<ProlificSession | null>(null)
     const [materials, setMaterials] = useState<AssignmentMaterialsPayload | null>(null)
     const [loading, setLoading] = useState(true)
@@ -186,14 +192,14 @@ export default function ProlificMaterials() {
                 setSelectedSolutionName(payload.solutionFiles[0]?.name ?? '')
                 setError(null)
 
-                return axios.post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${nextSession.token}/materials-time`, { event: 'start' })
+                return axios.post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${nextSession.token}/materials-time`, { event: 'start', fromTaskId: hasReturnTask ? returnTaskId : undefined })
             })
             .catch((err) => {
                 console.error(err)
                 setError(err?.response?.data?.error || 'Could not load assignment materials.')
             })
             .finally(() => setLoading(false))
-    }, [session_token])
+    }, [session_token, hasReturnTask, returnTaskId])
 
     const selectedPdf = useMemo(() => {
         return materials?.pdfFiles.find((file) => file.name === selectedPdfName) ?? materials?.pdfFiles[0] ?? null
@@ -215,8 +221,9 @@ export default function ProlificMaterials() {
             .catch((err) => console.error('Could not save material review time:', err))
             .finally(() => {
                 setSavingTime(false)
-                if (session.firstTaskId) {
-                    navigate(`/mini/prolific/${session.token}/tasks/${session.firstTaskId}`)
+                const nextTaskId = hasReturnTask ? returnTaskId : session.firstTaskId
+                if (nextTaskId) {
+                    navigate(`/mini/prolific/${session.token}/tasks/${nextTaskId}`)
                 } else {
                     navigate(`/mini/prolific/${session.token}/survey`)
                 }
@@ -247,7 +254,7 @@ export default function ProlificMaterials() {
                                 </div>
                             </div>
                             <button className="mini-button mini-button--primary" type="button" onClick={startGrading} disabled={savingTime}>
-                                {savingTime ? 'Starting...' : 'Start grading'}
+                                {savingTime ? 'Starting...' : hasReturnTask ? 'Return to grading' : 'Start grading'}
                                 {!savingTime && <FiArrowRight aria-hidden="true" />}
                             </button>
                         </section>
@@ -255,9 +262,8 @@ export default function ProlificMaterials() {
                         <section className="mini-card prolific-instructions-card">
                             <h2><FiBookOpen aria-hidden="true" /> What you will do</h2>
                             <ul>
-                                <li>Grade anonymized programs only; student names and submission folders are hidden.</li>
-                                <li>Use three grading formats: standard rubric, line-level errors without AI, and line-level errors with AI suggestions.</li>
-                                <li>Do not refresh or close the page while grading. The app saves your review time and each task time.</li>
+                                <li>Grade seven programs with the standard rubric, then seven with a line-level rubric, then seven with a line-level rubric including AI suggestions.</li>
+                                <li>You can return to these materials while grading.</li>
                                 <li>Finish the survey to receive the completion code.</li>
                             </ul>
                         </section>
@@ -340,7 +346,7 @@ export default function ProlificMaterials() {
                                 <h2><FiCheckCircle aria-hidden="true" /> Ready to grade?</h2>
                             </div>
                             <button className="mini-button mini-button--primary" type="button" onClick={startGrading} disabled={savingTime}>
-                                {savingTime ? 'Starting...' : 'Start grading'}
+                                {savingTime ? 'Starting...' : hasReturnTask ? 'Return to grading' : 'Start grading'}
                                 {!savingTime && <FiArrowRight aria-hidden="true" />}
                             </button>
                         </section>

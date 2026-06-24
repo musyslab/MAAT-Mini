@@ -309,8 +309,11 @@ export default function DiffView(props: DiffViewProps) {
     const [selectedCodeFile, setSelectedCodeFile] = useState<string>('')
 
     const [selectedDiffId, setSelectedDiffId] = useState<string | null>(null)
+    const [testcaseDataKey, setTestcaseDataKey] = useState<string>('')
     const [diffMode, setDiffMode] = useState<DiffMode>('long')
     const [diffLayout, setDiffLayout] = useState<DiffLayout>('side-by-side')
+
+    const testcaseSelectionKey = `${submissionId}:${classId}:${isPractice ? 1 : 0}:${practiceProblemId ?? 'none'}`
 
     // Intra-line highlight toggle
     const initialIntraRef = useRef<boolean>(true)
@@ -318,6 +321,10 @@ export default function DiffView(props: DiffViewProps) {
 
     // Track which (submissionId,classId) we've already logged to avoid duplicate logs (React StrictMode)
     const initLogKeyRef = useRef<string | null>(null)
+
+    // Track which testcase payload has had its initial topmost testcase selected.
+    // Without this, matching generated testcase ids can preserve the previous selection across programs.
+    const selectedDiffResetKeyRef = useRef<string | null>(null)
 
     const logUiClick = (
         action: UiLogAction,
@@ -432,12 +439,19 @@ export default function DiffView(props: DiffViewProps) {
     }
 
     useEffect(() => {
+        const nextDataKey = testcaseSelectionKey
+
         setTestsLoaded(false)
+        setPayload({ results: [] })
+        setTestcaseDataKey('')
+        setSelectedDiffId(null)
+        selectedDiffResetKeyRef.current = null
         setCodeFiles([])
         setSelectedCodeFile('')
 
         if (submissionId < 0 || classId < 0) {
             setPayload({ results: [] })
+            setTestcaseDataKey(nextDataKey)
             setTestsLoaded(true)
             return
         }
@@ -453,14 +467,16 @@ export default function DiffView(props: DiffViewProps) {
             .then((res) => {
                 const maybe = safeJsonParse(res.data)
                 setPayload((maybe && typeof maybe === 'object' ? maybe : { results: [] }) as AnyPayload)
+                setTestcaseDataKey(nextDataKey)
                 setTestsLoaded(true)
             })
             .catch((err) => {
                 console.log(err)
                 setPayload({ results: [] })
+                setTestcaseDataKey(nextDataKey)
                 setTestsLoaded(true)
             })
-    }, [submissionId, classId])
+    }, [submissionId, classId, isPractice, practiceProblemId, testcaseSelectionKey])
 
     // Baseline the toggles on mount per submission/class
     useEffect(() => {
@@ -613,12 +629,24 @@ export default function DiffView(props: DiffViewProps) {
     }, [payload])
 
     useEffect(() => {
-        if (!selectedDiffId && diffFilesAll.length > 0) {
+        if (testcaseDataKey !== testcaseSelectionKey) return
+
+        if (diffFilesAll.length === 0) {
+            selectedDiffResetKeyRef.current = testcaseSelectionKey
+            if (selectedDiffId !== null) setSelectedDiffId(null)
+            return
+        }
+
+        if (selectedDiffResetKeyRef.current !== testcaseSelectionKey) {
+            selectedDiffResetKeyRef.current = testcaseSelectionKey
             setSelectedDiffId(diffFilesAll[0].id)
-        } else if (selectedDiffId && diffFilesAll.every((f) => f.id !== selectedDiffId)) {
+            return
+        }
+
+        if (!selectedDiffId || diffFilesAll.every((f) => f.id !== selectedDiffId)) {
             setSelectedDiffId(diffFilesAll[0]?.id ?? null)
         }
-    }, [diffFilesAll, selectedDiffId])
+    }, [diffFilesAll, selectedDiffId, testcaseDataKey, testcaseSelectionKey])
 
     const selectedFile = useMemo(
         () => diffFilesAll.find((f) => f.id === selectedDiffId) || null,

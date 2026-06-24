@@ -19,7 +19,7 @@ type ProlificSession = {
 }
 
 function ProgressBar({ currentStep }: { currentStep: number }) {
-  const steps = ['Prolific ID', 'Materials', 'Grading', 'Survey']
+  const steps = ['Prolific ID', 'Materials', 'Rubric', 'Line-level', 'AI-assisted', 'Survey']
   const pct = Math.max(0, Math.min(100, ((currentStep - 1) / (steps.length - 1)) * 100))
 
   return (
@@ -32,9 +32,14 @@ function ProgressBar({ currentStep }: { currentStep: number }) {
         <div className="prolific-progress__fill" style={{ width: `${pct}%` }} />
       </div>
       <ol className="prolific-progress__steps">
-        {steps.map((step, idx) => (
-          <li key={step} className={idx + 1 <= currentStep ? 'is-complete' : ''}>{step}</li>
-        ))}
+        {steps.map((step, idx) => {
+          const stepNo = idx + 1
+          return (
+            <li key={step} className={[stepNo < currentStep ? 'is-complete' : '', stepNo === currentStep ? 'is-current' : ''].filter(Boolean).join(' ')}>
+              {step}
+            </li>
+          )
+        })}
       </ol>
     </section>
   )
@@ -105,7 +110,7 @@ export default function ProlificSurvey() {
     <div className="page-container mini-shell prolific-shell">
       <Helmet><title>MAAT-Mini Survey</title></Helmet>
       <MenuComponent />
-      <ProgressBar currentStep={4} />
+      <ProgressBar currentStep={6} />
 
       <main className="mini-page prolific-page">
         {loading && <div className="mini-card">Loading survey...</div>}

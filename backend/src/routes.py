@@ -41,30 +41,26 @@ ai_api = Blueprint("ai_api", __name__)
 AI_CLICKS_LOG = "/tabot-files/project-files/ai_clicks.log"
 SUGGESTION_LIMIT = 3
 PROLIFIC_ASSIGNMENT_IDS = [47, 51, 57]
-PROLIFIC_TASK_MODES = [
-    "rubric",
-    "line_no_ai",
-    "line_ai",
-    "rubric",
-    "line_no_ai",
-    "line_ai",
-    "rubric",
-    "line_no_ai",
-    "line_ai",
+PROLIFIC_BATCH_SIZE = 7
+PROLIFIC_STAGE_ORDER = ["rubric", "line_no_ai", "line_ai"]
+PROLIFIC_SOURCE_PATTERN = ["student", "ai", "student", "ai", "student", "ai", "student"]
+PROLIFIC_TASK_PLAN = [
+    (mode, desired_source)
+    for mode in PROLIFIC_STAGE_ORDER
+    for desired_source in PROLIFIC_SOURCE_PATTERN
 ]
-PROLIFIC_DESIRED_SOURCES = ["student", "ai", "student", "ai", "student", "ai", "student", "ai", "student"]
 MODE_LABELS = {
-    "rubric": "Standard rubric",
-    "line_no_ai": "Line errors without AI",
-    "line_ai": "Line errors with AI suggestions",
+    "rubric": "Rubric grading",
+    "line_no_ai": "Line-level grading",
+    "line_ai": "AI-assisted line-level grading",
 }
 
 GRADING_ERROR_DEFS = [
     {
         "id": "IO_FORMAT",
-        "label": "Wrong input, output, prompt, or formatting",
+        "label": "Wrong input, output, spelling, or formatting",
         "description": (
-            "Use for incorrect prompts, input order, output text, spacing, "
+            "Use for incorrect spelling, input order, output text, spacing, "
             "capitalization, punctuation, decimal display, or output order."
         ),
         "points": 10,
@@ -247,6 +243,40 @@ def now_utc() -> datetime:
     return datetime.utcnow()
 
 
+def add_material_review_duration(session: MiniProlificSession, now: datetime) -> None:
+    if session.MaterialReviewStartedAt is None:
+        return
+    prior = int(session.MaterialReviewSeconds or 0)
+    elapsed = max(0, int((now - session.MaterialReviewStartedAt).total_seconds()))
+    session.MaterialReviewSeconds = prior + elapsed
+    session.MaterialReviewEndedAt = now
+    session.MaterialReviewStartedAt = None
+
+
+def add_task_duration(task: MiniProlificTask, now: datetime) -> None:
+    if task.StartedAt is None:
+        task.DurationSeconds = int(task.DurationSeconds or 0)
+        return
+    prior = int(task.DurationSeconds or 0)
+    elapsed = max(0, int((now - task.StartedAt).total_seconds()))
+    task.DurationSeconds = prior + elapsed
+    task.StartedAt = None
+    task.UpdatedAt = now
+
+
+def pause_active_grading_tasks(session: MiniProlificSession, now: datetime, except_task_id: int | None = None) -> None:
+    query = MiniProlificTask.query.filter(
+        MiniProlificTask.SessionDbId == session.Id,
+        MiniProlificTask.EndedAt.is_(None),
+        MiniProlificTask.StartedAt.isnot(None),
+    )
+    if except_task_id is not None:
+        query = query.filter(MiniProlificTask.Id != except_task_id)
+
+    for active_task in query.all():
+        add_task_duration(active_task, now)
+
+
 def prolific_session_to_dict(session: MiniProlificSession) -> dict:
     tasks = MiniProlificTask.query.filter_by(SessionDbId=session.Id).order_by(MiniProlificTask.TaskIndex).all()
     completed = [t for t in tasks if t.EndedAt is not None]
@@ -316,24 +346,14 @@ def create_prolific_tasks(session: MiniProlificSession) -> None:
     selected = []
     previous_id = None
 
-    for idx, (mode, desired_source) in enumerate(zip(PROLIFIC_TASK_MODES, PROLIFIC_DESIRED_SOURCES), start=1):
-        is_repeat = False
-        if idx == 7 and selected:
-            repeat_source = selected[0]
-            submission = repeat_source["submission"]
-            is_repeat = True
-            if previous_id == submission.id and len(selected) > 1:
-                repeat_source = selected[1]
-                submission = repeat_source["submission"]
-        else:
-            submission = pick_submission(submissions, desired_source, used_ids, previous_id)
-            if submission:
-                used_ids.add(submission.id)
-
+    for mode, desired_source in PROLIFIC_TASK_PLAN:
+        submission = pick_submission(submissions, desired_source, used_ids, previous_id)
         if not submission:
             continue
 
+        is_repeat = submission.id in used_ids
         selected.append({"mode": mode, "submission": submission, "isRepeat": is_repeat})
+        used_ids.add(submission.id)
         previous_id = submission.id
 
     for idx, item in enumerate(selected, start=1):
@@ -371,6 +391,10 @@ def task_line_errors(task_id: int) -> list[dict]:
 
 def task_to_dict(task: MiniProlificTask, task_count: int) -> dict:
     rubric = _json_or_none(task.RubricJson) or {}
+    stage_index = PROLIFIC_STAGE_ORDER.index(task.Mode) + 1 if task.Mode in PROLIFIC_STAGE_ORDER else 1
+    stage_task_index = ((task.TaskIndex - 1) % PROLIFIC_BATCH_SIZE) + 1
+    stage_label = MODE_LABELS.get(task.Mode, task.Mode)
+
     return {
         "id": task.Id,
         "taskIndex": task.TaskIndex,
@@ -378,8 +402,13 @@ def task_to_dict(task: MiniProlificTask, task_count: int) -> dict:
         "submissionId": task.SubmissionId,
         "projectId": task.ProjectId,
         "mode": task.Mode,
-        "modeLabel": MODE_LABELS.get(task.Mode, task.Mode),
+        "modeLabel": stage_label,
         "programLabel": f"Program {task.TaskIndex}",
+        "stageIndex": stage_index,
+        "stageCount": len(PROLIFIC_STAGE_ORDER),
+        "stageTaskIndex": stage_task_index,
+        "stageTaskCount": PROLIFIC_BATCH_SIZE,
+        "stageLabel": stage_label,
         "isRepeat": bool(task.IsRepeat),
         "completed": task.EndedAt is not None,
         "grade": task.Grade,
@@ -465,14 +494,12 @@ def save_materials_time(token: str):
     now = now_utc()
 
     if event == "start":
+        pause_active_grading_tasks(session, now)
         if session.MaterialReviewStartedAt is None:
             session.MaterialReviewStartedAt = now
         session.Status = "materials"
     elif event == "end":
-        if session.MaterialReviewStartedAt is None:
-            session.MaterialReviewStartedAt = now
-        session.MaterialReviewEndedAt = now
-        session.MaterialReviewSeconds = max(0, int((session.MaterialReviewEndedAt - session.MaterialReviewStartedAt).total_seconds()))
+        add_material_review_duration(session, now)
         session.Status = "grading"
     else:
         return make_response(jsonify({"success": False, "error": "event must be 'start' or 'end'."}), HTTPStatus.BAD_REQUEST)
@@ -518,10 +545,30 @@ def start_prolific_task(token: str, task_id: int):
         return make_response(jsonify({"success": False, "error": "Grading task not found."}), HTTPStatus.NOT_FOUND)
 
     now = now_utc()
-    if task.StartedAt is None:
+    add_material_review_duration(session, now)
+    pause_active_grading_tasks(session, now, except_task_id=task.Id)
+    if task.EndedAt is None and task.StartedAt is None:
         task.StartedAt = now
     session.Status = "grading"
     task.UpdatedAt = now
+    session.UpdatedAt = now
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@mini_api.post("/prolific/session/<token>/tasks/<int:task_id>/pause")
+def pause_prolific_task(token: str, task_id: int):
+    session = require_prolific_session(token)
+    if not session:
+        return make_response(jsonify({"success": False, "error": "Prolific session not found."}), HTTPStatus.NOT_FOUND)
+    task = require_task_for_session(session, task_id)
+    if not task:
+        return make_response(jsonify({"success": False, "error": "Grading task not found."}), HTTPStatus.NOT_FOUND)
+
+    now = now_utc()
+    if task.EndedAt is None:
+        add_task_duration(task, now)
+    session.Status = "materials"
     session.UpdatedAt = now
     db.session.commit()
     return jsonify({"success": True})
@@ -546,10 +593,8 @@ def save_prolific_task(token: str, task_id: int):
     error_points = payload.get("errorPoints") if isinstance(payload.get("errorPoints"), dict) else {}
     error_defs = payload.get("errorDefs") if isinstance(payload.get("errorDefs"), dict) else {}
 
-    if task.StartedAt is None:
-        task.StartedAt = now
+    add_task_duration(task, now)
     task.EndedAt = now
-    task.DurationSeconds = max(0, int((task.EndedAt - task.StartedAt).total_seconds()))
     task.Grade = max(0, min(100, grade))
     task.ScoringMode = scoring_mode[:40]
     task.RubricJson = json.dumps({"selections": [str(x) for x in rubric_selections], "comment": rubric_comment})

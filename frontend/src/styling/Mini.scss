@@ -491,7 +491,7 @@ body {
   width: 100%;
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.75rem;
   list-style: none;
   padding: 0;
@@ -521,8 +521,17 @@ body {
   color: #0f766e;
 }
 
+.prolific-progress__steps li.is-current {
+  color: #1d4ed8;
+}
+
 .prolific-progress__steps li.is-complete::before {
   background: #0f766e;
+}
+
+.prolific-progress__steps li.is-current::before {
+  background: #2c7be5;
+  box-shadow: 0 0 0 4px rgba(44, 123, 229, 0.14);
 }
 
 .prolific-hero,
@@ -791,9 +800,23 @@ body {
   font-size: 1.5rem;
 }
 
-.grading-task-card__grade {
+.grading-task-card__actions {
   box-sizing: border-box;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.grading-task-card__actions .mini-button svg {
+  margin-left: 0;
+  margin-right: 0.35rem;
+}
+
+.grading-task-card__grade {
+  box-sizing: border-box;
   min-width: 120px;
   text-align: center;
   padding: 0.85rem 1rem;
@@ -853,11 +876,27 @@ body {
   }
 
   .prolific-progress__steps {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .material-section__header {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 620px) {
+  .prolific-progress__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grading-task-card__actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .grading-task-card__actions .mini-button,
+  .grading-task-card__actions .grading-task-card__grade {
+    width: 100%;
   }
 }
