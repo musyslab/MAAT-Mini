@@ -6,8 +6,8 @@ import { Helmet } from 'react-helmet'
 import MenuComponent from '../components/MenuComponent'
 import DiffView from '../components/CodeDiffView'
 import LoadingAnimation from '../components/LoadingAnimation'
-import '../../styling/ProlificGrading.scss'
-import '../../styling/Mini.scss'
+import ProgressBar from '../components/ProgressBar'
+import '../../styling/ProlificGradingTask.scss'
 
 import { FiArrowLeft, FiArrowRight, FiBookOpen, FiCheckCircle, FiCpu, FiHelpCircle, FiList, FiTarget, FiX } from 'react-icons/fi'
 
@@ -92,36 +92,6 @@ type TutorialViewport = {
 
 
 const MINI_CLASS_ID = 1
-
-function ProgressBar({ task }: { task: ProlificTask }) {
-    const steps = ['Prolific ID', 'Materials', 'Rubric', 'Line-level', 'AI-assisted', 'Survey']
-    const currentStep = Math.max(3, Math.min(5, task.stageIndex + 2))
-    const stagePct = task.stageTaskCount > 0 ? (task.stageTaskIndex - 1) / task.stageTaskCount : 0
-    const totalPct = Math.max(0, Math.min(100, ((currentStep - 1 + stagePct) / (steps.length - 1)) * 100))
-
-    return (
-        <section className="prolific-progress" aria-label="Study progress">
-            <div className="prolific-progress__meta">
-                <span>Progress</span>
-                <span>{task.stageLabel}: {task.stageTaskIndex} of {task.stageTaskCount}</span>
-            </div>
-            <div className="prolific-progress__track" aria-hidden="true">
-                <div className="prolific-progress__fill" style={{ width: `${totalPct}%` }} />
-            </div>
-            <ol className="prolific-progress__steps">
-                {steps.map((step, idx) => {
-                    const stepNo = idx + 1
-                    return (
-                        <li key={step} className={[stepNo < currentStep ? 'is-complete' : '', stepNo === currentStep ? 'is-current' : ''].filter(Boolean).join(' ')}>
-                            {step}
-                        </li>
-                    )
-                })}
-            </ol>
-        </section>
-    )
-}
-
 
 function tutorialStorageKey(sessionToken: string, mode: TaskMode) {
     return `MAAT_MINI_PROLIFIC_STAGE_TUTORIAL_SEEN:${sessionToken || 'unknown'}:${mode}`
@@ -333,7 +303,7 @@ function getTutorialHighlightRects(step: TutorialStep): TutorialHighlightRect[] 
     const rectPadding = 7
 
     return elements
-        .map((el, idx) => {
+        .map<TutorialHighlightRect | null>((el, idx) => {
             const rect = el.getBoundingClientRect()
             if (rect.width <= 0 || rect.height <= 0) return null
             if (rect.bottom < 0 || rect.right < 0 || rect.top > viewportHeight || rect.left > viewportWidth) return null
@@ -1392,7 +1362,13 @@ export function ProlificGradingTask() {
             <Helmet><title>MAAT-Mini Grading</title></Helmet>
             <MenuComponent showUpload={false} showAdminUpload={false} showHelp={false} showCreate={false} showLast={false} showReviewButton={false} />
 
-            {task && <ProgressBar task={task} />}
+            {task && (
+                <ProgressBar
+                    currentStep={Math.max(3, Math.min(5, task.stageIndex + 2))}
+                    progressWithinStep={task.stageTaskCount > 0 ? (task.stageTaskIndex - 1) / task.stageTaskCount : 0}
+                    detail={`${task.stageLabel}: ${task.stageTaskIndex} of ${task.stageTaskCount}`}
+                />
+            )}
 
             {error && <main className="mini-page prolific-page"><div className="mini-alert" role="alert">{error}</div></main>}
 

@@ -1,0 +1,37 @@
+.mini-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: rgba(245, 247, 251, 0.78);
+  backdrop-filter: blur(2px);
+}
+
+.mini-loading-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #fff;
+  border: 1px solid #dfe5ef;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 16px 42px rgba(23, 32, 51, 0.16);
+  font-weight: 700;
+}
+
+.mini-loading-spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 3px solid #d9e0ec;
+  border-top-color: #334155;
+  border-radius: 50%;
+  animation: mini-spin 900ms linear infinite;
+}
+
+@keyframes mini-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+

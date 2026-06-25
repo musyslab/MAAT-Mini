@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Helmet } from 'react-helmet'
@@ -6,8 +6,8 @@ import { Highlight, Prism, themes } from 'prism-react-renderer'
 import { FaChevronDown } from 'react-icons/fa'
 import { FiArrowRight, FiBookOpen, FiCheckCircle } from 'react-icons/fi'
 import MenuComponent from '../components/MenuComponent'
-import '../../styling/CodeDiffView.scss'
-import '../../styling/Mini.scss'
+import ProgressBar from '../components/ProgressBar'
+import '../../styling/ProlificMaterials.scss'
 
 let prismLangsLoaded = false
 let prismLangsPromise: Promise<void> | null = null
@@ -69,33 +69,6 @@ type ProlificSession = {
     taskCount: number
     completedTaskCount: number
     status: string
-}
-
-function ProgressBar({ currentStep }: { currentStep: number }) {
-    const steps = ['Prolific ID', 'Materials', 'Rubric', 'Line-level', 'AI-assisted', 'Survey']
-    const pct = Math.max(0, Math.min(100, ((currentStep - 1) / (steps.length - 1)) * 100))
-
-    return (
-        <section className="prolific-progress" aria-label="Study progress">
-            <div className="prolific-progress__meta">
-                <span>Progress</span>
-                <span>Step {currentStep} of {steps.length}</span>
-            </div>
-            <div className="prolific-progress__track" aria-hidden="true">
-                <div className="prolific-progress__fill" style={{ width: `${pct}%` }} />
-            </div>
-            <ol className="prolific-progress__steps">
-                {steps.map((step, idx) => {
-                    const stepNo = idx + 1
-                    return (
-                        <li key={step} className={[stepNo < currentStep ? 'is-complete' : '', stepNo === currentStep ? 'is-current' : ''].filter(Boolean).join(' ')}>
-                            {step}
-                        </li>
-                    )
-                })}
-            </ol>
-        </section>
-    )
 }
 
 function languageForHighlight(language: string, filename: string) {
@@ -165,6 +138,23 @@ export default function ProlificMaterials() {
     const [error, setError] = useState<string | null>(null)
     const [selectedPdfName, setSelectedPdfName] = useState('')
     const [selectedSolutionName, setSelectedSolutionName] = useState('')
+    const materialStartedAtRef = useRef<number | null>(null)
+
+    const nowMs = () => {
+        if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now()
+        return Date.now()
+    }
+
+    const markMaterialStart = () => {
+        materialStartedAtRef.current = nowMs()
+    }
+
+    const takeMaterialElapsedSeconds = () => {
+        const startedAt = materialStartedAtRef.current
+        materialStartedAtRef.current = null
+        if (startedAt === null) return 0
+        return Math.max(0, Math.round((nowMs() - startedAt) / 1000))
+    }
 
     useEffect(() => {
         if (!session_token) return
@@ -191,6 +181,7 @@ export default function ProlificMaterials() {
                 setSelectedPdfName(payload.pdfFiles[0]?.name ?? '')
                 setSelectedSolutionName(payload.solutionFiles[0]?.name ?? '')
                 setError(null)
+                markMaterialStart()
 
                 return axios.post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${nextSession.token}/materials-time`, { event: 'start', fromTaskId: hasReturnTask ? returnTaskId : undefined })
             })
@@ -216,8 +207,9 @@ export default function ProlificMaterials() {
     const startGrading = () => {
         if (!session) return
         setSavingTime(true)
+        const elapsedSeconds = takeMaterialElapsedSeconds()
         axios
-            .post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${session.token}/materials-time`, { event: 'end' })
+            .post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${session.token}/materials-time`, { event: 'end', elapsedSeconds })
             .catch((err) => console.error('Could not save material review time:', err))
             .finally(() => {
                 setSavingTime(false)

@@ -1,0 +1,73 @@
+.prolific-hero,
+.prolific-resume-card {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  gap: 1rem;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.prolific-hero {
+  padding: 1.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 22px;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef8f8 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+}
+
+.prolific-hero h1 {
+  margin: 0 0 0.45rem;
+  color: #102a43;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1.05;
+}
+
+.prolific-hero p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.55;
+  max-width: 78ch;
+}
+
+.prolific-hero__copy {
+  min-width: 0;
+}
+
+.prolific-hero__facts {
+  display: grid;
+  gap: 0.75rem;
+  min-width: min(320px, 100%);
+}
+
+.prolific-hero__facts div {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.75rem 0.9rem;
+  color: #334155;
+  font-weight: 650;
+}
+
+.prolific-resume-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.prolific-resume-card h2 {
+  margin: 0 0 0.25rem;
+}
+
+.prolific-resume-card p {
+  margin: 0;
+  color: #64748b;
+}
+
+@media (max-width: 900px) {
+  .prolific-hero,
+  .prolific-resume-card {
+    grid-template-columns: 1fr;
+  }
+}

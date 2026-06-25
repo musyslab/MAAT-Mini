@@ -1,9 +1,89 @@
-/* ProlificGrading.scss */
+/* ProlificGradingTask.scss */
 
-*,
-*::before,
-*::after {
-    box-sizing: border-box;
+@use './CodeStyling';
+
+
+.grading-task-header {
+  margin-top: 1rem;
+}
+
+.grading-task-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  border-radius: 18px;
+}
+
+.grading-task-card h1 {
+  margin: 0;
+  color: #172033;
+}
+
+.grading-task-card p {
+  margin: 0.35rem 0 0;
+  color: #5d667a;
+  line-height: 1.55;
+}
+
+.grading-task-card__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: #eef2ff;
+  color: #3152c7;
+  font-size: 1.4rem;
+}
+
+.grading-task-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.grading-task-card__actions .mini-button svg {
+  margin-left: 0;
+  margin-right: 0.35rem;
+}
+
+.grading-task-card__grade,
+.prolific-grade-card {
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.grading-task-card__grade span,
+.prolific-grade-card span {
+  display: block;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.grading-task-card__grade strong,
+.prolific-grade-card strong {
+  display: block;
+  color: #0f172a;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+@media (max-width: 900px) {
+  .grading-task-card {
+    grid-template-columns: 1fr;
+  }
+
+  .grading-task-card__actions {
+    justify-content: flex-start;
+  }
 }
 
 .diff-code-panel {

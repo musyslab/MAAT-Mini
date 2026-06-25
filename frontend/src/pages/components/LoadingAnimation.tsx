@@ -1,4 +1,5 @@
 import React from 'react'
+import '../../styling/LoadingAnimation.scss'
 
 interface LoadingAnimationProps {
   show: boolean

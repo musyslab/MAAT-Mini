@@ -1,0 +1,169 @@
+@use './CodeStyling';
+
+.assignment-materials-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.assignment-materials-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.assignment-materials-summary h1 {
+  margin: 0.25rem 0 0.65rem;
+  color: #172033;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.prolific-instructions-card,
+.prolific-ready-card,
+.prolific-complete-card,
+.material-section {
+  border-radius: 18px;
+}
+
+.prolific-instructions-card h2,
+.prolific-ready-card h2,
+.material-section h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  color: #172033;
+}
+
+.prolific-instructions-card ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.prolific-materials-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 0.85fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.prolific-materials-grid .material-section,
+.prolific-materials-grid .prolific-code-section {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.prolific-materials-grid .prolific-code-section {
+  background: #fff;
+  border: 1px solid #dfe5ef;
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(23, 32, 51, 0.06);
+}
+
+.prolific-materials-grid .material-section__header {
+  margin-bottom: 0.75rem;
+}
+
+.prolific-materials-grid .material-section h2,
+.prolific-materials-grid .prolific-code-section .section-title {
+  margin: 0;
+  color: #172033;
+  font-size: 1.3rem;
+}
+
+.prolific-materials-grid .materials-pdf,
+.prolific-materials-grid .prolific-code-section .code-block {
+  width: 100%;
+  height: min(70vh, 760px);
+  min-height: 520px;
+  box-sizing: border-box;
+}
+
+.prolific-materials-grid .prolific-code-section .code-block {
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.prolific-materials-grid .prolific-code-section .code-list {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+.material-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.material-select-wrap {
+  min-width: min(320px, 100%);
+}
+
+.materials-pdf {
+  width: 100%;
+  min-height: 640px;
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.text-material {
+  border-top: 1px solid #e2e8f0;
+  padding: 0.75rem 0;
+}
+
+.text-material:first-of-type {
+  border-top: 0;
+}
+
+.text-material pre {
+  white-space: pre-wrap;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 12px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.prolific-ready-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.prolific-ready-card > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.prolific-ready-card h2 {
+  margin: 0;
+}
+
+.prolific-ready-card h2 svg {
+  color: #16a34a;
+}
+
+@media (max-width: 1100px) {
+  .prolific-materials-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .assignment-materials-summary,
+  .prolific-ready-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

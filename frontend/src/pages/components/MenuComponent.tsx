@@ -5,6 +5,7 @@ import '../../styling/MenuComponent.scss'
 interface MenuComponentProps {
   showUpload?: boolean
   showDatasetUpload?: boolean
+  showAdminUpload?: boolean
   showHelp?: boolean
   showCreate?: boolean
   showReviewButton?: boolean

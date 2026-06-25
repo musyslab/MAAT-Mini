@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
 import uuid
 from datetime import datetime
 from http import HTTPStatus
-from typing import Iterable, List, Set
+from typing import Any, Iterable, List, Set
 
 import requests
 from flask import Blueprint, current_app, jsonify, make_response, request, send_file
@@ -30,8 +31,8 @@ from src.models import (
     MiniProlificSurvey,
     MiniProlificTask,
     MiniProlificTaskLineError,
-    MiniSubmissionGrade,
     MiniSubmissionManualError,
+    MiniSubmissionPath,
 )
 
 mini_api = Blueprint("mini_api", __name__)
@@ -48,6 +49,19 @@ PROLIFIC_TASK_PLAN = [
     (mode, desired_source)
     for mode in PROLIFIC_STAGE_ORDER
     for desired_source in PROLIFIC_SOURCE_PATTERN
+]
+PROLIFIC_ALL_THREE_REPEAT_SLOT = 3
+PROLIFIC_TWO_CATEGORY_REPEAT_SLOT = 6
+PROLIFIC_ALL_THREE_REPEAT_KEY = "same_all_three_categories"
+PROLIFIC_TWO_CATEGORY_REPEAT_KEY = "same_two_categories"
+PROLIFIC_FALLBACK_REPEAT_KEY = "unplanned_fallback_repeat"
+PROLIFIC_ALL_THREE_REPEAT_LABEL = "Same program across all three grading categories"
+PROLIFIC_TWO_CATEGORY_REPEAT_LABEL = "Same program between two grading categories"
+PROLIFIC_FALLBACK_REPEAT_LABEL = "Unplanned fallback repeat caused by insufficient unique programs"
+PROLIFIC_TWO_CATEGORY_MODE_PAIRS = [
+    ("rubric", "line_no_ai"),
+    ("rubric", "line_ai"),
+    ("line_no_ai", "line_ai"),
 ]
 MODE_LABELS = {
     "rubric": "Rubric grading",
@@ -227,8 +241,19 @@ def public_error_defs() -> List[dict]:
         for e in GRADING_ERROR_DEFS
     ]
 
+
+def grade_from_manual_errors(errors: Iterable[MiniSubmissionManualError]) -> int:
+    deduction = 0
+    for err in errors:
+        meta = GRADING_DEFAULT_DEFS_MAP.get(str(err.ErrorId or ""))
+        points = int((meta or {}).get("points", 0) or 0)
+        count = max(1, int(err.Count or 1))
+        deduction += points * count
+    return max(0, min(100, 100 - deduction))
+
+
 def completion_code() -> str:
-    return os.getenv("PROLIFIC_COMPLETION_CODE", "MAATMINI-COMPLETE").strip() or "MAATMINI-COMPLETE"
+    return os.getenv("PROLIFIC_COMPLETION_CODE", "").strip()
 
 
 def completion_url() -> str:
@@ -243,45 +268,135 @@ def now_utc() -> datetime:
     return datetime.utcnow()
 
 
-def add_material_review_duration(session: MiniProlificSession, now: datetime) -> None:
-    if session.MaterialReviewStartedAt is None:
-        return
-    prior = int(session.MaterialReviewSeconds or 0)
-    elapsed = max(0, int((now - session.MaterialReviewStartedAt).total_seconds()))
-    session.MaterialReviewSeconds = prior + elapsed
-    session.MaterialReviewEndedAt = now
-    session.MaterialReviewStartedAt = None
+def clean_text(value: Any, limit: int | None = None) -> str:
+    text = str(value or "")
+    if limit is not None:
+        return text[:limit]
+    return text
 
 
-def add_task_duration(task: MiniProlificTask, now: datetime) -> None:
-    if task.StartedAt is None:
-        task.DurationSeconds = int(task.DurationSeconds or 0)
-        return
-    prior = int(task.DurationSeconds or 0)
-    elapsed = max(0, int((now - task.StartedAt).total_seconds()))
-    task.DurationSeconds = prior + elapsed
-    task.StartedAt = None
-    task.UpdatedAt = now
+def clean_json(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {str(k): clean_json(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [clean_json(v) for v in value if v is not None]
+    return value
 
 
-def pause_active_grading_tasks(session: MiniProlificSession, now: datetime, except_task_id: int | None = None) -> None:
-    query = MiniProlificTask.query.filter(
-        MiniProlificTask.SessionDbId == session.Id,
-        MiniProlificTask.EndedAt.is_(None),
-        MiniProlificTask.StartedAt.isnot(None),
-    )
-    if except_task_id is not None:
-        query = query.filter(MiniProlificTask.Id != except_task_id)
+def json_dumps_clean(value: Any, default: Any) -> str:
+    cleaned = clean_json(value)
+    if cleaned is None:
+        cleaned = default
+    return json.dumps(cleaned, ensure_ascii=False, separators=(",", ":"))
 
-    for active_task in query.all():
-        add_task_duration(active_task, now)
+
+def json_or_default(value: str, default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        parsed = json.loads(value)
+    except Exception:
+        return default
+    return parsed if parsed is not None else default
+
+
+def positive_elapsed_seconds(payload: dict) -> int:
+    seconds = _parse_int(payload.get("elapsedSeconds"), 0)
+    return max(0, min(seconds, 24 * 60 * 60))
+
+
+def submission_path_hash(submission) -> str:
+    raw = f"{submission.project_id}|{submission.source}|{submission.folder.as_posix()}"
+    return hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def display_name_for_submission(submission) -> str:
+    display_index = submission.ordinal
+    if submission.source == "ai":
+        display_index = max(1, submission.ordinal - 500_000)
+    return f"Program {display_index}"
+
+
+def sync_submission_paths_for_assignment(project_id: int, commit: bool = False) -> list[dict]:
+    assignment = get_assignment(project_id)
+    if not assignment:
+        return []
+
+    synced: list[dict] = []
+    for submission in scan_submissions(project_id):
+        path_hash = submission_path_hash(submission)
+        row = MiniSubmissionPath.query.filter_by(PathHash=path_hash).first()
+        if not row:
+            row = MiniSubmissionPath(PathHash=path_hash)
+            db.session.add(row)
+
+        row.ExternalSubmissionId = int(submission.id)
+        row.AssignmentId = int(submission.project_id)
+        row.AssignmentName = clean_text(assignment.name, 255)
+        row.Ordinal = int(submission.ordinal)
+        row.Source = clean_text(submission.source, 40) or "student"
+        row.SourceLabel = clean_text(submission.source_label, 80) or "Program"
+        row.DisplayName = display_name_for_submission(submission)
+        row.FolderName = clean_text(submission.folder_name, 500)
+        row.FolderPath = submission.folder.as_posix()
+        row.TestcasesJsonPath = submission.testcase_json_path.as_posix() if submission.testcase_json_path else ""
+        row.TestcaseResultsPath = submission.testcase_results_path.as_posix() if submission.testcase_results_path else ""
+        row.CodeFilesJson = json_dumps_clean([p.as_posix() for p in submission.code_files], [])
+        row.IsPassing = bool(submission.is_passing)
+        row.UpdatedAt = now_utc()
+        synced.append({"submission": submission, "path": row})
+
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return synced
+
+
+def runtime_submission_for_path_id(submission_path_id: int):
+    row = MiniSubmissionPath.query.get(int(submission_path_id))
+    if not row:
+        return None
+
+    submission = get_submission(int(row.ExternalSubmissionId))
+    if submission:
+        return submission
+
+    for candidate in scan_submissions(int(row.AssignmentId)):
+        if submission_path_hash(candidate) == row.PathHash:
+            return candidate
+    return None
+
+
+def submission_path_to_dict(row: MiniSubmissionPath, submission) -> dict:
+    display = row.DisplayName or display_name_for_submission(submission)
+    return {
+        "submissionId": row.Id,
+        "submissionPathId": row.Id,
+        "projectId": row.AssignmentId,
+        "userId": row.Ordinal,
+        "userKey": display,
+        "firstName": "",
+        "lastName": "",
+        "fullName": display,
+        "folderName": row.FolderName,
+        "source": row.Source,
+        "sourceLabel": "Program",
+        "submittedAt": "",
+        "isPassing": bool(row.IsPassing),
+        "codeFileCount": len(submission.code_files),
+        "hasTestcasesJson": bool(row.TestcasesJsonPath),
+        "hasTestCaseResults": bool(row.TestcaseResultsPath),
+        "path": row.FolderPath,
+    }
 
 
 def prolific_session_to_dict(session: MiniProlificSession) -> dict:
     tasks = MiniProlificTask.query.filter_by(SessionDbId=session.Id).order_by(MiniProlificTask.TaskIndex).all()
-    completed = [t for t in tasks if t.EndedAt is not None]
-    first_open = next((t for t in tasks if t.EndedAt is None), tasks[0] if tasks else None)
-    return {
+    completed = [t for t in tasks if bool(t.Completed)]
+    first_open = next((t for t in tasks if not bool(t.Completed)), tasks[0] if tasks else None)
+    out = {
         "success": True,
         "id": session.Id,
         "token": session.Token,
@@ -290,10 +405,15 @@ def prolific_session_to_dict(session: MiniProlificSession) -> dict:
         "status": session.Status,
         "taskCount": len(tasks),
         "completedTaskCount": len(completed),
-        "firstTaskId": first_open.Id if first_open else None,
+        "materialReviewSeconds": int(session.MaterialReviewSeconds or 0),
+        "materialReviewVisits": int(session.MaterialReviewVisits or 0),
+        "materialReturnCount": int(session.MaterialReturnCount or 0),
         "completionCode": completion_code(),
         "completionUrl": completion_url(),
     }
+    if first_open:
+        out["firstTaskId"] = first_open.Id
+    return out
 
 
 def require_prolific_session(token: str) -> MiniProlificSession | None:
@@ -323,12 +443,30 @@ def choose_balanced_assignment_id() -> int | None:
     return random.choice(least_used)
 
 
-def pick_submission(candidates, desired_source: str, used_ids: set[int], previous_id: int | None):
+def desired_source_for_stage_slot(stage_slot: int) -> str:
+    if 1 <= stage_slot <= len(PROLIFIC_SOURCE_PATTERN):
+        return PROLIFIC_SOURCE_PATTERN[stage_slot - 1]
+    return PROLIFIC_SOURCE_PATTERN[0] if PROLIFIC_SOURCE_PATTERN else "student"
+
+
+def task_index_for_stage_slot(mode: str, stage_slot: int) -> int:
+    try:
+        stage_offset = PROLIFIC_STAGE_ORDER.index(mode) * PROLIFIC_BATCH_SIZE
+    except ValueError:
+        stage_offset = 0
+    return stage_offset + stage_slot
+
+
+def repeat_group_modes_label(modes: Iterable[str]) -> str:
+    return ", ".join(MODE_LABELS.get(mode, mode) for mode in modes)
+
+
+def pick_submission(candidates: list[dict], desired_source: str, used_path_ids: set[int], previous_path_id: int | None):
     pools = [
-        [s for s in candidates if s.source == desired_source and s.id not in used_ids and s.id != previous_id],
-        [s for s in candidates if s.source != desired_source and s.id not in used_ids and s.id != previous_id],
-        [s for s in candidates if s.id not in used_ids and s.id != previous_id],
-        [s for s in candidates if s.id != previous_id],
+        [c for c in candidates if c["submission"].source == desired_source and c["path"].Id not in used_path_ids and c["path"].Id != previous_path_id],
+        [c for c in candidates if c["submission"].source != desired_source and c["path"].Id not in used_path_ids and c["path"].Id != previous_path_id],
+        [c for c in candidates if c["path"].Id not in used_path_ids and c["path"].Id != previous_path_id],
+        [c for c in candidates if c["path"].Id != previous_path_id],
         list(candidates),
     ]
     for pool in pools:
@@ -337,36 +475,158 @@ def pick_submission(candidates, desired_source: str, used_ids: set[int], previou
     return None
 
 
-def create_prolific_tasks(session: MiniProlificSession) -> None:
-    submissions = [s for s in scan_submissions(session.AssignmentId) if s.code_files]
-    if not submissions:
+def pick_control_submission(candidates: list[dict], desired_source: str, excluded_path_ids: set[int]):
+    pools = [
+        [c for c in candidates if c["submission"].source == desired_source and c["path"].Id not in excluded_path_ids],
+        [c for c in candidates if c["path"].Id not in excluded_path_ids],
+        [c for c in candidates if c["submission"].source == desired_source],
+        list(candidates),
+    ]
+    for pool in pools:
+        if pool:
+            return random.choice(pool)
+    return None
+
+
+def add_controlled_repeat(
+    controlled_positions: dict[tuple[str, int], dict],
+    item: dict | None,
+    modes: Iterable[str],
+    stage_slot: int,
+    group_key: str,
+    group_label: str,
+) -> None:
+    if not item:
         return
 
-    used_ids: set[int] = set()
+    mode_list = [mode for mode in modes if mode in PROLIFIC_STAGE_ORDER]
+    ordered_modes = sorted(mode_list, key=lambda mode: task_index_for_stage_slot(mode, stage_slot))
+    group_size = len(ordered_modes)
+    modes_label = repeat_group_modes_label(ordered_modes)
+
+    for ordinal, mode in enumerate(ordered_modes, start=1):
+        controlled_positions[(mode, stage_slot)] = {
+            "submission": item["submission"],
+            "path": item["path"],
+            "repeatGroupKey": group_key,
+            "repeatGroupLabel": f"{group_label}: {modes_label}",
+            "repeatGroupSize": group_size,
+            "repeatGroupOrdinal": ordinal,
+        }
+
+
+def create_prolific_tasks(session: MiniProlificSession) -> None:
+    candidates = [item for item in sync_submission_paths_for_assignment(session.AssignmentId) if item["submission"].code_files]
+    if not candidates:
+        return
+
+    controlled_positions: dict[tuple[str, int], dict] = {}
+    controlled_path_ids: set[int] = set()
+
+    all_three_item = pick_control_submission(
+        candidates,
+        desired_source_for_stage_slot(PROLIFIC_ALL_THREE_REPEAT_SLOT),
+        controlled_path_ids,
+    )
+    if all_three_item:
+        controlled_path_ids.add(all_three_item["path"].Id)
+        add_controlled_repeat(
+            controlled_positions,
+            all_three_item,
+            PROLIFIC_STAGE_ORDER,
+            PROLIFIC_ALL_THREE_REPEAT_SLOT,
+            PROLIFIC_ALL_THREE_REPEAT_KEY,
+            PROLIFIC_ALL_THREE_REPEAT_LABEL,
+        )
+
+    two_category_modes = random.choice(PROLIFIC_TWO_CATEGORY_MODE_PAIRS)
+    two_category_item = pick_control_submission(
+        candidates,
+        desired_source_for_stage_slot(PROLIFIC_TWO_CATEGORY_REPEAT_SLOT),
+        controlled_path_ids,
+    )
+    if two_category_item:
+        controlled_path_ids.add(two_category_item["path"].Id)
+        add_controlled_repeat(
+            controlled_positions,
+            two_category_item,
+            two_category_modes,
+            PROLIFIC_TWO_CATEGORY_REPEAT_SLOT,
+            PROLIFIC_TWO_CATEGORY_REPEAT_KEY,
+            PROLIFIC_TWO_CATEGORY_REPEAT_LABEL,
+        )
+
+    used_path_ids: set[int] = set()
     selected = []
-    previous_id = None
+    previous_path_id = None
 
-    for mode, desired_source in PROLIFIC_TASK_PLAN:
-        submission = pick_submission(submissions, desired_source, used_ids, previous_id)
-        if not submission:
-            continue
+    for mode in PROLIFIC_STAGE_ORDER:
+        for stage_slot, desired_source in enumerate(PROLIFIC_SOURCE_PATTERN, start=1):
+            controlled = controlled_positions.get((mode, stage_slot))
 
-        is_repeat = submission.id in used_ids
-        selected.append({"mode": mode, "submission": submission, "isRepeat": is_repeat})
-        used_ids.add(submission.id)
-        previous_id = submission.id
+            if controlled:
+                submission = controlled["submission"]
+                path_row = controlled["path"]
+                is_repeat = path_row.Id in used_path_ids
+                selected.append(
+                    {
+                        "mode": mode,
+                        "submission": submission,
+                        "path": path_row,
+                        "isRepeat": is_repeat,
+                        "repeatGroupKey": controlled["repeatGroupKey"],
+                        "repeatGroupLabel": controlled["repeatGroupLabel"],
+                        "repeatGroupSize": controlled["repeatGroupSize"],
+                        "repeatGroupOrdinal": controlled["repeatGroupOrdinal"],
+                    }
+                )
+                used_path_ids.add(path_row.Id)
+                previous_path_id = path_row.Id
+                continue
+
+            item = pick_submission(candidates, desired_source, used_path_ids, previous_path_id)
+            if not item:
+                continue
+
+            submission = item["submission"]
+            path_row = item["path"]
+            is_repeat = path_row.Id in used_path_ids
+            selected.append(
+                {
+                    "mode": mode,
+                    "submission": submission,
+                    "path": path_row,
+                    "isRepeat": is_repeat,
+                    "repeatGroupKey": PROLIFIC_FALLBACK_REPEAT_KEY if is_repeat else "",
+                    "repeatGroupLabel": PROLIFIC_FALLBACK_REPEAT_LABEL if is_repeat else "",
+                    "repeatGroupSize": 1,
+                    "repeatGroupOrdinal": 1,
+                }
+            )
+            used_path_ids.add(path_row.Id)
+            previous_path_id = path_row.Id
 
     for idx, item in enumerate(selected, start=1):
-        submission = item["submission"]
         db.session.add(
             MiniProlificTask(
                 SessionDbId=session.Id,
                 TaskIndex=idx,
-                SubmissionId=submission.id,
-                ProjectId=submission.project_id,
+                SubmissionPathId=item["path"].Id,
                 Mode=item["mode"],
-                Source=submission.source,
+                Source=item["submission"].source,
                 IsRepeat=bool(item["isRepeat"]),
+                RepeatGroupKey=item.get("repeatGroupKey", ""),
+                RepeatGroupLabel=item.get("repeatGroupLabel", ""),
+                RepeatGroupSize=max(1, _parse_int(item.get("repeatGroupSize"), 1)),
+                RepeatGroupOrdinal=max(1, _parse_int(item.get("repeatGroupOrdinal"), 1)),
+                Completed=False,
+                Grade=100,
+                ScoringMode="",
+                RubricSelectionsJson="[]",
+                RubricCountsJson="{}",
+                RubricComment="",
+                ErrorPointsJson="{}",
+                ErrorDefsJson="{}",
             )
         )
 
@@ -390,17 +650,19 @@ def task_line_errors(task_id: int) -> list[dict]:
 
 
 def task_to_dict(task: MiniProlificTask, task_count: int) -> dict:
-    rubric = _json_or_none(task.RubricJson) or {}
+    submission_path = MiniSubmissionPath.query.get(task.SubmissionPathId)
     stage_index = PROLIFIC_STAGE_ORDER.index(task.Mode) + 1 if task.Mode in PROLIFIC_STAGE_ORDER else 1
     stage_task_index = ((task.TaskIndex - 1) % PROLIFIC_BATCH_SIZE) + 1
     stage_label = MODE_LABELS.get(task.Mode, task.Mode)
+    project_id = submission_path.AssignmentId if submission_path else 0
 
     return {
         "id": task.Id,
         "taskIndex": task.TaskIndex,
         "taskCount": task_count,
-        "submissionId": task.SubmissionId,
-        "projectId": task.ProjectId,
+        "submissionId": task.SubmissionPathId,
+        "submissionPathId": task.SubmissionPathId,
+        "projectId": project_id,
         "mode": task.Mode,
         "modeLabel": stage_label,
         "programLabel": f"Program {task.TaskIndex}",
@@ -410,10 +672,15 @@ def task_to_dict(task: MiniProlificTask, task_count: int) -> dict:
         "stageTaskCount": PROLIFIC_BATCH_SIZE,
         "stageLabel": stage_label,
         "isRepeat": bool(task.IsRepeat),
-        "completed": task.EndedAt is not None,
-        "grade": task.Grade,
-        "rubricSelections": rubric.get("selections", []),
-        "rubricComment": rubric.get("comment", ""),
+        "repeatGroupKey": task.RepeatGroupKey or "",
+        "repeatGroupLabel": task.RepeatGroupLabel or "",
+        "repeatGroupSize": int(task.RepeatGroupSize or 1),
+        "repeatGroupOrdinal": int(task.RepeatGroupOrdinal or 1),
+        "completed": bool(task.Completed),
+        "grade": int(task.Grade or 100),
+        "rubricSelections": json_or_default(task.RubricSelectionsJson, []),
+        "rubricCounts": json_or_default(task.RubricCountsJson, {}),
+        "rubricComment": task.RubricComment or "",
         "errors": task_line_errors(task.Id),
     }
 
@@ -467,6 +734,9 @@ def create_or_resume_prolific_session():
         AssignmentId=assignment_id,
         AssignmentName=assignment_info.name,
         Status="started",
+        MaterialReviewSeconds=0,
+        MaterialReviewVisits=0,
+        MaterialReturnCount=0,
     )
     db.session.add(session)
     db.session.flush()
@@ -494,12 +764,13 @@ def save_materials_time(token: str):
     now = now_utc()
 
     if event == "start":
-        pause_active_grading_tasks(session, now)
-        if session.MaterialReviewStartedAt is None:
-            session.MaterialReviewStartedAt = now
+        session.MaterialReviewVisits = int(session.MaterialReviewVisits or 0) + 1
+        from_task_id = _parse_int(payload.get("fromTaskId"), 0)
+        if from_task_id > 0:
+            session.MaterialReturnCount = int(session.MaterialReturnCount or 0) + 1
         session.Status = "materials"
     elif event == "end":
-        add_material_review_duration(session, now)
+        session.MaterialReviewSeconds = int(session.MaterialReviewSeconds or 0) + positive_elapsed_seconds(payload)
         session.Status = "grading"
     else:
         return make_response(jsonify({"success": False, "error": "event must be 'start' or 'end'."}), HTTPStatus.BAD_REQUEST)
@@ -521,18 +792,17 @@ def get_prolific_task(token: str, task_id: int):
 
     tasks = MiniProlificTask.query.filter_by(SessionDbId=session.Id).order_by(MiniProlificTask.TaskIndex).all()
     next_task = next((candidate for candidate in tasks if candidate.TaskIndex > task.TaskIndex), None)
-
-    return jsonify(
-        {
-            "success": True,
-            "token": session.Token,
-            "assignmentId": session.AssignmentId,
-            "assignmentName": session.AssignmentName,
-            "task": task_to_dict(task, len(tasks)),
-            "nextTaskId": next_task.Id if next_task else None,
-            "errorDefs": public_error_defs(),
-        }
-    )
+    out = {
+        "success": True,
+        "token": session.Token,
+        "assignmentId": session.AssignmentId,
+        "assignmentName": session.AssignmentName,
+        "task": task_to_dict(task, len(tasks)),
+        "errorDefs": public_error_defs(),
+    }
+    if next_task:
+        out["nextTaskId"] = next_task.Id
+    return jsonify(out)
 
 
 @mini_api.post("/prolific/session/<token>/tasks/<int:task_id>/start")
@@ -545,12 +815,9 @@ def start_prolific_task(token: str, task_id: int):
         return make_response(jsonify({"success": False, "error": "Grading task not found."}), HTTPStatus.NOT_FOUND)
 
     now = now_utc()
-    add_material_review_duration(session, now)
-    pause_active_grading_tasks(session, now, except_task_id=task.Id)
-    if task.EndedAt is None and task.StartedAt is None:
-        task.StartedAt = now
-    session.Status = "grading"
+    task.VisitCount = int(task.VisitCount or 0) + 1
     task.UpdatedAt = now
+    session.Status = "grading"
     session.UpdatedAt = now
     db.session.commit()
     return jsonify({"success": True})
@@ -566,8 +833,7 @@ def pause_prolific_task(token: str, task_id: int):
         return make_response(jsonify({"success": False, "error": "Grading task not found."}), HTTPStatus.NOT_FOUND)
 
     now = now_utc()
-    if task.EndedAt is None:
-        add_task_duration(task, now)
+    task.UpdatedAt = now
     session.Status = "materials"
     session.UpdatedAt = now
     db.session.commit()
@@ -588,18 +854,20 @@ def save_prolific_task(token: str, task_id: int):
     grade = _parse_int(payload.get("grade"), 0)
     scoring_mode = str(payload.get("scoringMode") or task.Mode)
     rubric_selections = payload.get("rubricSelections") if isinstance(payload.get("rubricSelections"), list) else []
+    rubric_counts = payload.get("rubricCounts") if isinstance(payload.get("rubricCounts"), dict) else {}
     rubric_comment = str(payload.get("rubricComment") or "")
     errors = payload.get("errors") if isinstance(payload.get("errors"), list) else []
     error_points = payload.get("errorPoints") if isinstance(payload.get("errorPoints"), dict) else {}
     error_defs = payload.get("errorDefs") if isinstance(payload.get("errorDefs"), dict) else {}
 
-    add_task_duration(task, now)
-    task.EndedAt = now
+    task.Completed = True
     task.Grade = max(0, min(100, grade))
     task.ScoringMode = scoring_mode[:40]
-    task.RubricJson = json.dumps({"selections": [str(x) for x in rubric_selections], "comment": rubric_comment})
-    task.ErrorPointsJson = json.dumps(error_points)
-    task.ErrorDefsJson = json.dumps(error_defs)
+    task.RubricSelectionsJson = json_dumps_clean([str(x) for x in rubric_selections], [])
+    task.RubricCountsJson = json_dumps_clean(rubric_counts, {})
+    task.RubricComment = rubric_comment
+    task.ErrorPointsJson = json_dumps_clean(error_points, {})
+    task.ErrorDefsJson = json_dumps_clean(error_defs, {})
     task.UpdatedAt = now
 
     db.session.execute(delete(MiniProlificTaskLineError).where(MiniProlificTaskLineError.TaskId == task.Id))
@@ -620,7 +888,7 @@ def save_prolific_task(token: str, task_id: int):
     remaining = MiniProlificTask.query.filter(
         MiniProlificTask.SessionDbId == session.Id,
         MiniProlificTask.Id != task.Id,
-        MiniProlificTask.EndedAt.is_(None),
+        MiniProlificTask.Completed.is_(False),
     ).count()
     session.Status = "survey" if remaining == 0 else "grading"
     session.UpdatedAt = now
@@ -635,21 +903,41 @@ def save_prolific_survey(token: str):
         return make_response(jsonify({"success": False, "error": "Prolific session not found."}), HTTPStatus.NOT_FOUND)
 
     payload = request.get_json(silent=True) or {}
+    raw_responses = payload.get("responses") if isinstance(payload.get("responses"), dict) else {}
+
+    responses = dict(raw_responses)
+    for key in ("confusingParts", "helpfulParts", "aiConcerns", "comments"):
+        if key not in responses:
+            responses[key] = str(payload.get(key) or "")
+
+    alias_keys = {
+        "confidence": "overallConfidence",
+        "difficulty": "overallDifficulty",
+        "fairness": "overallFairness",
+    }
+    for payload_key, response_key in alias_keys.items():
+        if response_key not in responses and payload.get(payload_key) not in (None, ""):
+            responses[response_key] = str(payload.get(payload_key) or "")
+
+    for key in (
+        "aiUsefulness",
+        "preferredMode",
+        "mostReliableMode",
+        "leastReliableMode",
+        "attentionCheck",
+    ):
+        if key not in responses and payload.get(key) not in (None, ""):
+            responses[key] = str(payload.get(key) or "")
+
     survey = MiniProlificSurvey.query.filter_by(SessionDbId=session.Id).first()
     if not survey:
         survey = MiniProlificSurvey(SessionDbId=session.Id)
         db.session.add(survey)
 
-    survey.Confidence = str(payload.get("confidence") or "")[:40]
-    survey.Difficulty = str(payload.get("difficulty") or "")[:40]
-    survey.AiUsefulness = str(payload.get("aiUsefulness") or "")[:40]
-    survey.Fairness = str(payload.get("fairness") or "")[:40]
-    survey.Comments = str(payload.get("comments") or "")
-    survey.SurveyJson = json.dumps(payload)
+    survey.ResponsesJson = json_dumps_clean(responses, {})
     survey.SubmittedAt = now_utc()
 
     session.Status = "completed"
-    session.CompletedAt = survey.SubmittedAt
     session.UpdatedAt = survey.SubmittedAt
     db.session.commit()
     return jsonify({"success": True, "session": prolific_session_to_dict(session)})
@@ -708,28 +996,31 @@ def assignment_material_file(project_id: int):
 def assignment_submissions(project_id: int):
     if not get_assignment(project_id):
         return make_response(jsonify({"error": "Assignment not found"}), HTTPStatus.NOT_FOUND)
-    return jsonify({"submissions": [submission_to_dict(s) for s in scan_submissions(project_id)]})
+    rows = sync_submission_paths_for_assignment(project_id, commit=True)
+    return jsonify({"submissions": [submission_path_to_dict(item["path"], item["submission"]) for item in rows]})
 
 
 @submission_api.post("/recentsubproject")
 def recent_submissions_for_project():
     payload = request.get_json(silent=True) or {}
     project_id = _parse_int(payload.get("project_id"), -1)
-    rows = scan_submissions(project_id)
+    rows = sync_submission_paths_for_assignment(project_id, commit=True)
 
     # Shape expected by AdminGrading from full MAAT:
     # Object.entries(data).map(([userId, value]) => value[0]=last, value[1]=first, value[7]=submissionId)
     out = {}
-    for submission in rows:
+    for item in rows:
+        submission = item["submission"]
+        path_row = item["path"]
         out[str(submission.ordinal)] = [
-            submission.last_name,
-            submission.first_name,
-            submission.user_key,
-            submission.submitted_at,
-            submission.folder_name,
-            submission.project_id,
-            submission.is_passing,
-            submission.id,
+            "",
+            "",
+            path_row.DisplayName,
+            "",
+            path_row.FolderName,
+            path_row.AssignmentId,
+            bool(path_row.IsPassing),
+            path_row.Id,
         ]
     return jsonify(out)
 
@@ -737,7 +1028,7 @@ def recent_submissions_for_project():
 @submission_api.get("/testcaseerrors")
 def testcase_errors():
     submission_id = _parse_int(request.args.get("id"), -1)
-    submission = get_submission(submission_id)
+    submission = runtime_submission_for_path_id(submission_id)
     if not submission:
         return make_response(jsonify({"results": [], "error": "Submission not found"}), HTTPStatus.NOT_FOUND)
     return jsonify(testcase_payload(submission))
@@ -746,7 +1037,7 @@ def testcase_errors():
 @submission_api.get("/codefinder")
 def code_finder():
     submission_id = _parse_int(request.args.get("id"), -1)
-    submission = get_submission(submission_id)
+    submission = runtime_submission_for_path_id(submission_id)
     if not submission:
         return make_response(jsonify({"files": [], "error": "Submission not found"}), HTTPStatus.NOT_FOUND)
     return jsonify(code_payload(submission))
@@ -761,77 +1052,64 @@ def log_ui_click():
 
 @submission_api.get("/get-grading/<int:submission_id>")
 def get_grading(submission_id: int):
-    errors = MiniSubmissionManualError.query.filter_by(SubmissionId=submission_id).order_by(
+    errors = MiniSubmissionManualError.query.filter_by(SubmissionPathId=submission_id).order_by(
         MiniSubmissionManualError.StartLine,
         MiniSubmissionManualError.EndLine,
         MiniSubmissionManualError.ErrorId,
     ).all()
-    grade_cfg = MiniSubmissionGrade.query.filter_by(SubmissionId=submission_id).first()
 
-    return jsonify(
-        {
-            "success": True,
-            "errors": [
-                {
-                    "startLine": err.StartLine,
-                    "endLine": err.EndLine,
-                    "errorId": err.ErrorId,
-                    "count": err.Count or 1,
-                    "note": err.Note or "",
-                }
-                for err in errors
-            ],
-            "grade": grade_cfg.Grade if grade_cfg else None,
-            "scoringMode": grade_cfg.ScoringMode if grade_cfg else None,
-            "errorPoints": _json_or_none(grade_cfg.ErrorPointsJson) if grade_cfg else None,
-            "errorDefs": _json_or_none(grade_cfg.ErrorDefsJson) if grade_cfg else None,
-        }
-    )
+    out = {
+        "success": True,
+        "errors": [
+            {
+                "startLine": err.StartLine,
+                "endLine": err.EndLine,
+                "errorId": err.ErrorId,
+                "count": err.Count or 1,
+                "note": err.Note or "",
+            }
+            for err in errors
+        ],
+        "grade": grade_from_manual_errors(errors),
+        "scoringMode": "lineErrors" if errors else "",
+        "errorPoints": {},
+        "errorDefs": GRADING_DEFAULT_DEFS_MAP,
+    }
+    return jsonify(out)
 
 
 @submission_api.post("/save-grading")
 def save_grading():
     payload = request.get_json(silent=True) or {}
-    submission_id = _parse_int(payload.get("submissionId"), -1)
-    project_id = _parse_int(payload.get("projectId"), submission_id // 1_000_000)
-    grade = _parse_int(payload.get("grade"), 0)
-    scoring_mode = str(payload.get("scoringMode") or "perInstance")
-    error_points = payload.get("errorPoints") if isinstance(payload.get("errorPoints"), dict) else {}
-    error_defs = payload.get("errorDefs") if isinstance(payload.get("errorDefs"), dict) else {}
+    submission_path_id = _parse_int(payload.get("submissionId"), -1)
     errors = payload.get("errors") if isinstance(payload.get("errors"), list) else []
 
-    if not get_submission(submission_id):
-        return make_response(jsonify({"success": False, "error": "Submission not found"}), HTTPStatus.NOT_FOUND)
+    submission_path = MiniSubmissionPath.query.get(submission_path_id)
+    if not submission_path:
+        return make_response(jsonify({"success": False, "error": "Submission path not found"}), HTTPStatus.NOT_FOUND)
 
-    grade_cfg = MiniSubmissionGrade.query.filter_by(SubmissionId=submission_id).first()
-    if not grade_cfg:
-        grade_cfg = MiniSubmissionGrade(SubmissionId=submission_id, ProjectId=project_id)
-        db.session.add(grade_cfg)
-
-    grade_cfg.ProjectId = project_id
-    grade_cfg.Grade = max(0, min(100, grade))
-    grade_cfg.ScoringMode = scoring_mode
-    grade_cfg.ErrorPointsJson = json.dumps(error_points)
-    grade_cfg.ErrorDefsJson = json.dumps(error_defs)
-    grade_cfg.UpdatedAt = datetime.utcnow()
-
-    db.session.execute(delete(MiniSubmissionManualError).where(MiniSubmissionManualError.SubmissionId == submission_id))
+    db.session.execute(delete(MiniSubmissionManualError).where(MiniSubmissionManualError.SubmissionPathId == submission_path_id))
     for item in errors:
         if not isinstance(item, dict):
             continue
+        start_line = max(1, _parse_int(item.get("startLine"), 1))
+        end_line = max(start_line, _parse_int(item.get("endLine"), start_line))
         db.session.add(
             MiniSubmissionManualError(
-                SubmissionId=submission_id,
-                StartLine=max(1, _parse_int(item.get("startLine"), 1)),
-                EndLine=max(1, _parse_int(item.get("endLine"), 1)),
+                SubmissionPathId=submission_path_id,
+                StartLine=start_line,
+                EndLine=end_line,
                 ErrorId=str(item.get("errorId") or "UNKNOWN")[:80],
                 Count=max(1, _parse_int(item.get("count"), 1)),
                 Note=str(item.get("note") or ""),
             )
         )
 
+    saved_errors = MiniSubmissionManualError.query.filter_by(SubmissionPathId=submission_path_id).all()
+    grade = grade_from_manual_errors(saved_errors)
+
     db.session.commit()
-    return jsonify({"success": True, "msg": "Grading saved"})
+    return jsonify({"success": True, "msg": "Grading saved", "grade": grade, "scoringMode": "lineErrors"})
 
 
 @ai_api.route("/grading-error-defs", methods=["GET"])
@@ -987,7 +1265,7 @@ def call_llm(prompt: str, temperature: float = 0.1, max_tokens: int = 150) -> st
 
 
 def build_diff_long_for_testcase(submission_id: int, testcase_name: str) -> str:
-    submission = get_submission(int(submission_id))
+    submission = runtime_submission_for_path_id(int(submission_id))
     if not submission:
         return ""
 

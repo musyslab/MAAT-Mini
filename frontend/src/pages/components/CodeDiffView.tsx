@@ -971,7 +971,7 @@ export default function DiffView(props: DiffViewProps) {
         }
 
         const lines = txt.split('\n')
-        const out: JSX.Element[] = []
+        const out: React.ReactElement[] = []
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i] ?? ''

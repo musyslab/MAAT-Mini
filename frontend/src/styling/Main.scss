@@ -1,0 +1,381 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  background: #f5f5f5;
+}
+
+.page-container {
+  margin-top: 0;
+  min-height: 100vh;
+}
+
+.pageTitle {
+  width: 95vw;
+  max-width: 95vw;
+  box-sizing: border-box;
+  margin: 15px auto 0;
+  align-self: stretch;
+  display: block;
+  padding: 15px 32px;
+  background: #d1d5db;
+  border: 1px solid #9ca3af;
+  border-radius: 16px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.8rem;
+  line-height: 1.15;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.mini-page {
+  width: 95vw;
+  max-width: 95vw;
+  box-sizing: border-box;
+  margin: 1rem auto 3rem;
+}
+
+.mini-muted {
+  color: #5d667a;
+  line-height: 1.55;
+}
+
+.mini-grid {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.mini-card {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #dfe5ef;
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(23, 32, 51, 0.06);
+}
+
+.mini-card--link,
+.mini-card--link:visited {
+  display: block;
+  color: #172033;
+  text-decoration: none;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.mini-card--link:hover,
+.mini-card--link:focus-visible {
+  transform: translateY(-2px);
+  border-color: #8ca3c7;
+  box-shadow: 0 14px 38px rgba(23, 32, 51, 0.1);
+  outline: none;
+}
+
+.mini-card h2 {
+  margin: 0.25rem 0 0.75rem;
+  color: #172033;
+  font-size: 1.2rem;
+}
+
+.mini-card__eyebrow {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mini-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mini-card__meta span,
+.mini-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  background: #eef2f8;
+  color: #334155;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.mini-pill--pass {
+  background: #e8f7ed;
+  color: #176a33;
+}
+
+.mini-pill--fail {
+  background: #fff1f1;
+  color: #a12828;
+}
+
+.mini-card__path,
+.mini-card__small {
+  color: #64748b;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.mini-alert {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #f3b6b6;
+  background: #fff1f1;
+  color: #8f1d1d;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.mini-table-wrap {
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #dfe5ef;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(23, 32, 51, 0.06);
+}
+
+.mini-table {
+  width: 100%;
+  box-sizing: border-box;
+  border-collapse: collapse;
+}
+
+.mini-table th,
+.mini-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #edf1f7;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.mini-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mini-table tr:last-child td {
+  border-bottom: none;
+}
+
+.mini-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #b8c3d5;
+  background: #fff;
+  color: #172033;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.mini-button:hover,
+.mini-button:focus-visible {
+  background: #eef2f8;
+  outline: none;
+}
+
+
+.mini-card__actions {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.mini-button--primary {
+  background: #172033;
+  border-color: #172033;
+  color: #fff;
+}
+
+.mini-button--primary:hover,
+.mini-button--primary:focus-visible {
+  background: #334155;
+  color: #fff;
+}
+
+
+.page-container.prolific-shell,
+.mini-shell.prolific-shell {
+  width: 100%;
+  max-width: none;
+}
+
+.prolific-shell .mini-page,
+.prolific-shell .prolific-page,
+.prolific-progress {
+  width: 95vw;
+  max-width: 95vw;
+  box-sizing: border-box;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.prolific-shell .prolific-page {
+  display: grid;
+  gap: 1rem;
+}
+
+
+
+.section-title {
+  margin-top: 0;
+  color: #222e3a;
+}
+
+.section-label {
+  font-weight: 700;
+  color: #374151;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.muted.small,
+.small {
+  font-size: 0.88rem;
+}
+
+.no-data-message {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #64748b;
+  padding: 1rem;
+}
+
+.select-wrap {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-block;
+}
+
+.select {
+  appearance: none;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.55rem 2.2rem 0.55rem 0.75rem;
+  font-weight: 600;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  min-width: 260px;
+}
+
+.select-icon {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #6b7280;
+}
+
+.select:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.prolific-form {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.prolific-form__header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.prolific-form h1,
+.prolific-form h2 {
+  margin: 0;
+  color: #172033;
+}
+
+.prolific-form p {
+  margin: 0;
+  color: #5d667a;
+  line-height: 1.55;
+}
+
+.prolific-field {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: #172033;
+}
+
+.prolific-field input,
+.prolific-field select,
+.prolific-field textarea,
+.rubric-comment textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  font: inherit;
+  background: #fff;
+  color: #172033;
+}
+
+.prolific-field input:focus,
+.prolific-field select:focus,
+.prolific-field textarea:focus,
+.rubric-comment textarea:focus {
+  outline: 3px solid rgba(36, 99, 235, 0.16);
+  border-color: #2563eb;
+}
+
+.mini-button svg {
+  margin-left: 0.4rem;
+}
+
+@media (max-width: 720px) {
+  .mini-page,
+  .prolific-shell .mini-page,
+  .prolific-shell .prolific-page {
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+  }
+
+  .mini-card {
+    border-radius: 14px;
+  }
+
+  .mini-button,
+  .select {
+    width: 100%;
+  }
+}

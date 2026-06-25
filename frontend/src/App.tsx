@@ -1,6 +1,7 @@
 import React from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import axios from 'axios'
+import './styling/Main.scss'
 
 import ProlificEntry from './pages/prolific/ProlificEntry'
 import ProlificMaterials from './pages/prolific/ProlificMaterials'

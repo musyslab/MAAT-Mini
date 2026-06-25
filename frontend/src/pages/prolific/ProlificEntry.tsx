@@ -4,7 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Helmet } from 'react-helmet'
 import { FiArrowRight, FiClipboard, FiShield } from 'react-icons/fi'
 import MenuComponent from '../components/MenuComponent'
-import '../../styling/Mini.scss'
+import ProgressBar from '../components/ProgressBar'
+import '../../styling/ProlificEntry.scss'
 
 type ProlificSessionResponse = {
   success: boolean
@@ -15,33 +16,6 @@ type ProlificSessionResponse = {
   taskCount: number
   completionCode?: string
   error?: string
-}
-
-function ProgressBar({ currentStep }: { currentStep: number }) {
-  const steps = ['Prolific ID', 'Materials', 'Rubric', 'Line-level', 'AI-assisted', 'Survey']
-  const pct = Math.max(0, Math.min(100, ((currentStep - 1) / (steps.length - 1)) * 100))
-
-  return (
-    <section className="prolific-progress" aria-label="Study progress">
-      <div className="prolific-progress__meta">
-        <span>Progress</span>
-        <span>Step {currentStep} of {steps.length}</span>
-      </div>
-      <div className="prolific-progress__track" aria-hidden="true">
-        <div className="prolific-progress__fill" style={{ width: `${pct}%` }} />
-      </div>
-      <ol className="prolific-progress__steps">
-        {steps.map((step, idx) => {
-          const stepNo = idx + 1
-          return (
-            <li key={step} className={[stepNo < currentStep ? 'is-complete' : '', stepNo === currentStep ? 'is-current' : ''].filter(Boolean).join(' ')}>
-              {step}
-            </li>
-          )
-        })}
-      </ol>
-    </section>
-  )
 }
 
 export default function ProlificEntry() {
