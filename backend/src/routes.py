@@ -57,12 +57,11 @@ PROLIFIC_ALL_THREE_REPEAT_KEY = "same_all_three_categories"
 PROLIFIC_TWO_CATEGORY_REPEAT_KEY = "same_two_categories"
 PROLIFIC_FALLBACK_REPEAT_KEY = "unplanned_fallback_repeat"
 PROLIFIC_ALL_THREE_REPEAT_LABEL = "Same program across all three grading categories"
-PROLIFIC_TWO_CATEGORY_REPEAT_LABEL = "Same program between two grading categories"
+PROLIFIC_TWO_CATEGORY_REPEAT_LABEL = "Same program repeated within one grading category"
 PROLIFIC_FALLBACK_REPEAT_LABEL = "Unplanned fallback repeat caused by insufficient unique programs"
-PROLIFIC_TWO_CATEGORY_MODE_PAIRS = [
-    ("rubric", "line_no_ai"),
-    ("rubric", "line_ai"),
-    ("line_no_ai", "line_ai"),
+PROLIFIC_TWO_CATEGORY_REPEAT_SLOT_PAIRS = [
+    (2, PROLIFIC_TWO_CATEGORY_REPEAT_SLOT),
+    (4, PROLIFIC_TWO_CATEGORY_REPEAT_SLOT),
 ]
 MODE_LABELS = {
     "rubric": "Rubric grading",
@@ -552,23 +551,34 @@ def pick_control_submission(candidates: list[dict], desired_source: str, exclude
     return None
 
 
-def add_controlled_repeat(
+def add_controlled_repeat_positions(
     controlled_positions: dict[tuple[str, int], dict],
     item: dict | None,
-    modes: Iterable[str],
-    stage_slot: int,
+    positions: Iterable[tuple[str, int]],
     group_key: str,
     group_label: str,
 ) -> None:
     if not item:
         return
 
-    mode_list = [mode for mode in modes if mode in PROLIFIC_STAGE_ORDER]
-    ordered_modes = sorted(mode_list, key=lambda mode: task_index_for_stage_slot(mode, stage_slot))
-    group_size = len(ordered_modes)
-    modes_label = repeat_group_modes_label(ordered_modes)
+    valid_positions = [
+        (mode, stage_slot)
+        for mode, stage_slot in positions
+        if mode in PROLIFIC_STAGE_ORDER and 1 <= stage_slot <= PROLIFIC_BATCH_SIZE
+    ]
+    ordered_positions = sorted(
+        valid_positions,
+        key=lambda position: task_index_for_stage_slot(position[0], position[1]),
+    )
+    if not ordered_positions:
+        return
 
-    for ordinal, mode in enumerate(ordered_modes, start=1):
+    group_size = len(ordered_positions)
+    ordered_modes = [mode for mode, _stage_slot in ordered_positions]
+    unique_modes = list(dict.fromkeys(ordered_modes))
+    modes_label = repeat_group_modes_label(unique_modes)
+
+    for ordinal, (mode, stage_slot) in enumerate(ordered_positions, start=1):
         controlled_positions[(mode, stage_slot)] = {
             "submission": item["submission"],
             "path": item["path"],
@@ -577,6 +587,23 @@ def add_controlled_repeat(
             "repeatGroupSize": group_size,
             "repeatGroupOrdinal": ordinal,
         }
+
+
+def add_controlled_repeat(
+    controlled_positions: dict[tuple[str, int], dict],
+    item: dict | None,
+    modes: Iterable[str],
+    stage_slot: int,
+    group_key: str,
+    group_label: str,
+) -> None:
+    add_controlled_repeat_positions(
+        controlled_positions,
+        item,
+        [(mode, stage_slot) for mode in modes],
+        group_key,
+        group_label,
+    )
 
 
 def create_prolific_tasks(session: MiniProlificSession) -> None:
@@ -603,7 +630,8 @@ def create_prolific_tasks(session: MiniProlificSession) -> None:
             PROLIFIC_ALL_THREE_REPEAT_LABEL,
         )
 
-    two_category_modes = random.choice(PROLIFIC_TWO_CATEGORY_MODE_PAIRS)
+    two_category_mode = random.choice(PROLIFIC_STAGE_ORDER)
+    two_category_slots = random.choice(PROLIFIC_TWO_CATEGORY_REPEAT_SLOT_PAIRS)
     two_category_item = pick_control_submission(
         candidates,
         desired_source_for_stage_slot(PROLIFIC_TWO_CATEGORY_REPEAT_SLOT),
@@ -611,11 +639,10 @@ def create_prolific_tasks(session: MiniProlificSession) -> None:
     )
     if two_category_item:
         controlled_path_ids.add(two_category_item["path"].Id)
-        add_controlled_repeat(
+        add_controlled_repeat_positions(
             controlled_positions,
             two_category_item,
-            two_category_modes,
-            PROLIFIC_TWO_CATEGORY_REPEAT_SLOT,
+            [(two_category_mode, stage_slot) for stage_slot in two_category_slots],
             PROLIFIC_TWO_CATEGORY_REPEAT_KEY,
             PROLIFIC_TWO_CATEGORY_REPEAT_LABEL,
         )
