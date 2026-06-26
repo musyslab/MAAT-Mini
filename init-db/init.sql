@@ -81,6 +81,8 @@ CREATE TABLE MiniProlificTasks (
   RepeatGroupSize INT NOT NULL DEFAULT 1,
   RepeatGroupOrdinal INT NOT NULL DEFAULT 1,
   VisitCount INT NOT NULL DEFAULT 0,
+  GradingStartedAt DATETIME NULL,
+  GradingSeconds INT NOT NULL DEFAULT 0,
   Completed TINYINT(1) NOT NULL DEFAULT 0,
   Grade INT NOT NULL DEFAULT 100,
   ScoringMode VARCHAR(40) NOT NULL DEFAULT '',
@@ -96,6 +98,7 @@ CREATE TABLE MiniProlificTasks (
   KEY idx_MiniProlificTasks_SessionDbId (SessionDbId),
   KEY idx_MiniProlificTasks_SubmissionPathId (SubmissionPathId),
   KEY idx_MiniProlificTasks_RepeatGroupKey (RepeatGroupKey),
+  KEY idx_MiniProlificTasks_Mode (Mode),
   CONSTRAINT fk_MiniProlificTasks_SessionDbId
     FOREIGN KEY (SessionDbId) REFERENCES MiniProlificSessions (Id)
     ON DELETE CASCADE,

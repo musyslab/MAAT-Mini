@@ -70,6 +70,8 @@ class MiniProlificTask(db.Model):
     RepeatGroupSize = Column(Integer, nullable=False, default=1)
     RepeatGroupOrdinal = Column(Integer, nullable=False, default=1)
     VisitCount = Column(Integer, nullable=False, default=0)
+    GradingStartedAt = Column(DateTime, nullable=True)
+    GradingSeconds = Column(Integer, nullable=False, default=0)
     Completed = Column(Boolean, nullable=False, default=False)
     Grade = Column(Integer, nullable=False, default=100)
     ScoringMode = Column(String(40), nullable=False, default="")

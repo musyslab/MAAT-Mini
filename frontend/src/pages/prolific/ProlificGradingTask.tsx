@@ -48,6 +48,8 @@ type ProlificTask = {
     stageTaskCount: number
     stageLabel: string
     isRepeat: boolean
+    visitCount?: number
+    gradingSeconds?: number
     completed: boolean
     grade?: number | null
     rubricSelections?: string[]
@@ -373,6 +375,7 @@ export function ProlificGradingTask() {
     const diffViewRef = useRef<HTMLElement | null>(null)
     const summaryRef = useRef<HTMLElement | null>(null)
     const tutorialMaskIdRef = useRef(`stage-tutorial-mask-${Math.random().toString(36).slice(2)}`)
+    const gradingStartedAtRef = useRef<number | null>(null)
 
     const [aiSuggestionIds, setAiSuggestionIds] = useState<string[]>([])
     const [aiSuggestStatus, setAiSuggestStatus] = useState<AiStatus>('idle')
@@ -402,6 +405,22 @@ export function ProlificGradingTask() {
     const lineMode = task?.mode === 'line_no_ai' || task?.mode === 'line_ai'
     const tutorialSteps = useMemo(() => (task ? stageTutorialSteps(task.mode) : []), [task?.mode])
     const currentTutorialStep = showStageTutorial ? tutorialSteps[tutorialStepIndex] : null
+
+    const nowMs = () => {
+        if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now()
+        return Date.now()
+    }
+
+    const markGradingStart = () => {
+        gradingStartedAtRef.current = nowMs()
+    }
+
+    const takeGradingElapsedSeconds = () => {
+        const startedAt = gradingStartedAtRef.current
+        gradingStartedAtRef.current = null
+        if (startedAt === null) return 0
+        return Math.max(0, Math.round((nowMs() - startedAt) / 1000))
+    }
 
     useEffect(() => {
         selectedRangeRef.current = selectedRange
@@ -526,6 +545,7 @@ export function ProlificGradingTask() {
         setFindMatchIndex(0)
         lineRefs.current = {}
         lastAiKeyRef.current = ''
+        gradingStartedAtRef.current = null
 
         axios
             .get(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${session_token}/tasks/${taskId}`)
@@ -565,6 +585,7 @@ export function ProlificGradingTask() {
                     setObservedErrors(Array.isArray(next.task?.errors) ? next.task.errors : [])
                 }
 
+                markGradingStart()
                 return axios.post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${session_token}/tasks/${taskId}/start`)
             })
             .catch((err) => {
@@ -933,9 +954,10 @@ export function ProlificGradingTask() {
     const viewMaterials = () => {
         if (!payload || !task) return
         saveCurrentDraft()
+        const elapsedSeconds = takeGradingElapsedSeconds()
         setLoading(true)
         axios
-            .post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${payload.token}/tasks/${task.id}/pause`)
+            .post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${payload.token}/tasks/${task.id}/pause`, { elapsedSeconds })
             .catch((err) => console.error('Could not pause grading timer:', err))
             .finally(() => {
                 setLoading(false)
@@ -956,10 +978,12 @@ export function ProlificGradingTask() {
         setSaveValidationError(null)
         setSaveStatus('saving')
         setShowSavedBanner(false)
+        const elapsedSeconds = takeGradingElapsedSeconds()
 
         axios
             .post(`${import.meta.env.VITE_API_URL}/mini/prolific/session/${payload.token}/tasks/${task.id}/save`, {
                 grade,
+                elapsedSeconds,
                 scoringMode: isRubricMode ? 'rubric' : 'lineErrors',
                 rubricSelections: selectedRubricIds,
                 rubricCounts,
@@ -984,6 +1008,7 @@ export function ProlificGradingTask() {
             })
             .catch((err) => {
                 console.error(err)
+                markGradingStart()
                 setSaveStatus('error')
             })
     }

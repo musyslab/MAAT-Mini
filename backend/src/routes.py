@@ -41,6 +41,7 @@ ai_api = Blueprint("ai_api", __name__)
 
 AI_CLICKS_LOG = "/tabot-files/project-files/ai_clicks.log"
 SUGGESTION_LIMIT = 3
+MAX_TRACKED_SECONDS_PER_EVENT = 24 * 60 * 60
 PROLIFIC_ASSIGNMENT_IDS = [47, 51, 57]
 PROLIFIC_BATCH_SIZE = 7
 PROLIFIC_STAGE_ORDER = ["rubric", "line_no_ai", "line_ai"]
@@ -304,7 +305,66 @@ def json_or_default(value: str, default: Any) -> Any:
 
 def positive_elapsed_seconds(payload: dict) -> int:
     seconds = _parse_int(payload.get("elapsedSeconds"), 0)
-    return max(0, min(seconds, 24 * 60 * 60))
+    return max(0, min(seconds, MAX_TRACKED_SECONDS_PER_EVENT))
+
+
+def seconds_between(start: datetime | None, end: datetime) -> int:
+    if not start:
+        return 0
+    try:
+        seconds = int((end - start).total_seconds())
+    except Exception:
+        return 0
+    return max(0, min(seconds, MAX_TRACKED_SECONDS_PER_EVENT))
+
+
+def current_task_grading_seconds(task: MiniProlificTask, now: datetime | None = None) -> int:
+    now = now or now_utc()
+    return int(task.GradingSeconds or 0) + seconds_between(task.GradingStartedAt, now)
+
+
+def record_task_grading_stop(task: MiniProlificTask, now: datetime, payload: dict | None = None) -> int:
+    payload = payload or {}
+
+    if not task.GradingStartedAt:
+        if bool(task.Completed) or "elapsedSeconds" not in payload:
+            return 0
+        elapsed = positive_elapsed_seconds(payload)
+        task.GradingSeconds = int(task.GradingSeconds or 0) + elapsed
+        return elapsed
+
+    client_seconds = positive_elapsed_seconds(payload) if "elapsedSeconds" in payload else 0
+    server_seconds = seconds_between(task.GradingStartedAt, now)
+    elapsed = max(client_seconds, server_seconds)
+
+    task.GradingSeconds = int(task.GradingSeconds or 0) + elapsed
+    task.GradingStartedAt = None
+    return elapsed
+
+
+def mode_time_summary_for_tasks(tasks: list[MiniProlificTask], now: datetime | None = None) -> dict[str, dict]:
+    now = now or now_utc()
+    summary: dict[str, dict] = {}
+
+    for task in tasks:
+        mode = task.Mode or "unknown"
+        row = summary.setdefault(
+            mode,
+            {
+                "mode": mode,
+                "modeLabel": MODE_LABELS.get(mode, mode),
+                "taskCount": 0,
+                "completedTaskCount": 0,
+                "visitCount": 0,
+                "gradingSeconds": 0,
+            },
+        )
+        row["taskCount"] += 1
+        row["completedTaskCount"] += 1 if bool(task.Completed) else 0
+        row["visitCount"] += int(task.VisitCount or 0)
+        row["gradingSeconds"] += current_task_grading_seconds(task, now)
+
+    return summary
 
 
 def submission_path_hash(submission) -> str:
@@ -396,6 +456,8 @@ def prolific_session_to_dict(session: MiniProlificSession) -> dict:
     tasks = MiniProlificTask.query.filter_by(SessionDbId=session.Id).order_by(MiniProlificTask.TaskIndex).all()
     completed = [t for t in tasks if bool(t.Completed)]
     first_open = next((t for t in tasks if not bool(t.Completed)), tasks[0] if tasks else None)
+    now = now_utc()
+    grading_time_by_mode = mode_time_summary_for_tasks(tasks, now)
     out = {
         "success": True,
         "id": session.Id,
@@ -408,6 +470,8 @@ def prolific_session_to_dict(session: MiniProlificSession) -> dict:
         "materialReviewSeconds": int(session.MaterialReviewSeconds or 0),
         "materialReviewVisits": int(session.MaterialReviewVisits or 0),
         "materialReturnCount": int(session.MaterialReturnCount or 0),
+        "gradingSeconds": sum(row["gradingSeconds"] for row in grading_time_by_mode.values()),
+        "gradingTimeByMode": grading_time_by_mode,
         "completionCode": completion_code(),
         "completionUrl": completion_url(),
     }
@@ -676,6 +740,8 @@ def task_to_dict(task: MiniProlificTask, task_count: int) -> dict:
         "repeatGroupLabel": task.RepeatGroupLabel or "",
         "repeatGroupSize": int(task.RepeatGroupSize or 1),
         "repeatGroupOrdinal": int(task.RepeatGroupOrdinal or 1),
+        "visitCount": int(task.VisitCount or 0),
+        "gradingSeconds": current_task_grading_seconds(task),
         "completed": bool(task.Completed),
         "grade": int(task.Grade or 100),
         "rubricSelections": json_or_default(task.RubricSelectionsJson, []),
@@ -692,6 +758,60 @@ def require_task_for_session(session: MiniProlificSession, task_id: int) -> Mini
 @mini_api.get("/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@mini_api.get("/prolific/grading-time")
+def prolific_grading_time_report():
+    query = MiniProlificSession.query
+
+    prolific_pid = str(request.args.get("prolificPid") or request.args.get("PROLIFIC_PID") or "").strip()
+    study_id = str(request.args.get("studyId") or request.args.get("STUDY_ID") or "").strip()
+    session_id = str(request.args.get("sessionId") or request.args.get("SESSION_ID") or "").strip()
+    assignment_id = _parse_int(request.args.get("assignmentId"), 0)
+    mode_filter = str(request.args.get("mode") or request.args.get("rubric") or "").strip()
+
+    if prolific_pid:
+        query = query.filter(MiniProlificSession.ProlificPid == prolific_pid)
+    if study_id:
+        query = query.filter(MiniProlificSession.StudyId == study_id)
+    if session_id:
+        query = query.filter(MiniProlificSession.SessionId == session_id)
+    if assignment_id > 0:
+        query = query.filter(MiniProlificSession.AssignmentId == assignment_id)
+
+    sessions = query.order_by(MiniProlificSession.CreatedAt.desc()).limit(500).all()
+    now = now_utc()
+    rows: list[dict] = []
+
+    for session in sessions:
+        tasks = MiniProlificTask.query.filter_by(SessionDbId=session.Id).order_by(MiniProlificTask.TaskIndex).all()
+        summary = mode_time_summary_for_tasks(tasks, now)
+        for mode, mode_row in summary.items():
+            if mode_filter and mode != mode_filter:
+                continue
+            rows.append(
+                {
+                    "prolificPid": session.ProlificPid,
+                    "studyId": session.StudyId,
+                    "sessionId": session.SessionId,
+                    "assignmentId": session.AssignmentId,
+                    "assignmentName": session.AssignmentName,
+                    "status": session.Status,
+                    "mode": mode,
+                    "modeLabel": mode_row["modeLabel"],
+                    "taskCount": mode_row["taskCount"],
+                    "completedTaskCount": mode_row["completedTaskCount"],
+                    "visitCount": mode_row["visitCount"],
+                    "gradingSeconds": mode_row["gradingSeconds"],
+                    "materialReviewSeconds": int(session.MaterialReviewSeconds or 0),
+                    "materialReviewVisits": int(session.MaterialReviewVisits or 0),
+                    "materialReturnCount": int(session.MaterialReturnCount or 0),
+                    "createdAt": session.CreatedAt.isoformat() if session.CreatedAt else "",
+                    "updatedAt": session.UpdatedAt.isoformat() if session.UpdatedAt else "",
+                }
+            )
+
+    return jsonify({"success": True, "rows": rows})
 
 
 @mini_api.post("/prolific/session")
@@ -816,11 +936,14 @@ def start_prolific_task(token: str, task_id: int):
 
     now = now_utc()
     task.VisitCount = int(task.VisitCount or 0) + 1
+    if not task.GradingStartedAt:
+        task.GradingStartedAt = now
     task.UpdatedAt = now
     session.Status = "grading"
     session.UpdatedAt = now
+    task_count = MiniProlificTask.query.filter_by(SessionDbId=session.Id).count()
     db.session.commit()
-    return jsonify({"success": True})
+    return jsonify({"success": True, "task": task_to_dict(task, task_count)})
 
 
 @mini_api.post("/prolific/session/<token>/tasks/<int:task_id>/pause")
@@ -832,12 +955,15 @@ def pause_prolific_task(token: str, task_id: int):
     if not task:
         return make_response(jsonify({"success": False, "error": "Grading task not found."}), HTTPStatus.NOT_FOUND)
 
+    payload = request.get_json(silent=True) or {}
     now = now_utc()
+    elapsed = record_task_grading_stop(task, now, payload)
     task.UpdatedAt = now
     session.Status = "materials"
     session.UpdatedAt = now
+    task_count = MiniProlificTask.query.filter_by(SessionDbId=session.Id).count()
     db.session.commit()
-    return jsonify({"success": True})
+    return jsonify({"success": True, "elapsedSeconds": elapsed, "task": task_to_dict(task, task_count)})
 
 
 @mini_api.post("/prolific/session/<token>/tasks/<int:task_id>/save")
@@ -859,6 +985,8 @@ def save_prolific_task(token: str, task_id: int):
     errors = payload.get("errors") if isinstance(payload.get("errors"), list) else []
     error_points = payload.get("errorPoints") if isinstance(payload.get("errorPoints"), dict) else {}
     error_defs = payload.get("errorDefs") if isinstance(payload.get("errorDefs"), dict) else {}
+
+    record_task_grading_stop(task, now, payload)
 
     task.Completed = True
     task.Grade = max(0, min(100, grade))
