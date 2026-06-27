@@ -208,20 +208,30 @@ def get_llm_model() -> str:
     return os.getenv("LLM_MODEL", "").strip()
 
 
-def log_ai_click(submission_id: int, prompt: str, output: str) -> None:
+def log_value(value: Any, limit: int = 6000) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list, tuple)):
+        value = json.dumps(clean_json(value), ensure_ascii=False, separators=(",", ":"))
+    return one_line(truncate_text(str(value), limit)).replace("|", "\\|")
+
+
+def log_ai_click(submission_id: int, prompt: str, output: str, context: dict | None = None) -> None:
     try:
+        context = context or {}
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        username = "unknown"
-        role = 0
 
         os.makedirs(os.path.dirname(AI_CLICKS_LOG), exist_ok=True)
 
-        prompt_safe = one_line(truncate_text(prompt, 6000))
-        output_safe = one_line(truncate_text(output, 6000))
-
         line = (
-            f"{ts} | user:{username} | role:{role} | submission:{int(submission_id)}"
-            f" | prompt:{prompt_safe} | output:{output_safe}\n"
+            f"{ts}"
+            f" | submission:{int(submission_id)}"
+            f" | prolific_session_db_id:{context.get('prolific_session_db_id', '')}"
+            f" | prolific_task_id:{context.get('prolific_task_id', '')}"
+            f" | submission_path_id:{context.get('submission_path_id', submission_id)}"
+            f" | prompt:{one_line(prompt)}"
+            f" | output:{one_line(output)}"
+            "\n"
         )
 
         with open(AI_CLICKS_LOG, "a", encoding="utf-8") as f:
@@ -1444,6 +1454,37 @@ def build_diff_long_for_testcase(submission_id: int, testcase_name: str) -> str:
     return ""
 
 
+def ai_click_db_context(data: dict, submission_id: int) -> dict:
+    session_token = str(data.get("sessionToken") or "").strip()
+    task_id = safe_int(data.get("taskId"), -1)
+
+    context = {
+        "prolific_session_db_id": "",
+        "prolific_task_id": "",
+        "submission_path_id": submission_id,
+    }
+
+    if not session_token or task_id < 0:
+        return context
+
+    session = MiniProlificSession.query.filter_by(Token=session_token).first()
+    if not session:
+        return context
+
+    task = MiniProlificTask.query.filter_by(
+        Id=task_id,
+        SessionDbId=session.Id,
+    ).first()
+    if not task:
+        return context
+
+    context["prolific_session_db_id"] = session.Id
+    context["prolific_task_id"] = task.Id
+    context["submission_path_id"] = task.SubmissionPathId
+
+    return context
+
+
 @ai_api.route("/grading-suggestions", methods=["POST"])
 def grading_suggestions():
     data = request.get_json(silent=True) or {}
@@ -1474,6 +1515,7 @@ def grading_suggestions():
         current_app.logger.warning(f"[ai_suggestions] LLM call failed: {e}")
         llm_output = f"ERROR: {e}"
 
-    log_ai_click(submission_id, prompt, llm_output)
+    context = ai_click_db_context(data, submission_id)
+    log_ai_click(submission_id, prompt, llm_output, context)
 
     return jsonify({"suggestions": suggestions})

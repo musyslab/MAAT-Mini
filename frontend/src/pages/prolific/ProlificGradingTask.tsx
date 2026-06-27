@@ -866,6 +866,8 @@ export function ProlificGradingTask() {
                     selectedCode: truncateForAi(selectedCode, 1500),
                     testcaseName: activeTestcaseName,
                     testcaseLongDiff: truncateForAi(activeTestcaseLongDiff, 2500),
+                    sessionToken: payload?.token ?? session_token,
+                    taskId: task.id,
                 },
                 { signal: ctrl.signal },
             )
